@@ -187,11 +187,11 @@ console.log(`\n${BOLD}Nighthawks - PS-021 conformance harness${RESET}\n`);
     assert(
       'render: all five demonstrations present',
       [
-        'Normal Transmission',
-        'Out-of-Order Packets',
-        'System Crash & Auto-Recovery',
-        'Duplicate Request Guard',
-        'Missing Packet Recovery',
+        'Multiple Dialogs',
+        'Request Lost',
+        'Response Lost',
+        'Adapter B Restart',
+        'Adapter A Restart',
       ].every((title) => text.includes(title)),
       '5 scenarios',
     );
@@ -222,86 +222,92 @@ console.log(`\n${BOLD}Nighthawks - PS-021 conformance harness${RESET}\n`);
 }
 
 /* ---------------------------------------------------------------- */
-/* Scenario 1 - normal asynchronous flow                            */
+/* Scenario 1 - multiple dialogs with retry → correlation           */
 /* ---------------------------------------------------------------- */
 {
   const wireBefore = eng().wire.length;
   const outcome = await run(() => eng().runScenario(1));
-  const dialog = findDialog(outcome.dialogId);
+  // Scenario 1 creates two dialogs (D1 and D2)
+  const d1Id = `${outcome.dialogId}-D1`;
+  const d2Id = `${outcome.dialogId}-D2`;
+  const d1 = findDialog(d1Id);
+  const d2 = findDialog(d2Id);
   const passedCount = outcome.assertions.filter((row) => row.ok).length;
   const wire = eng().wire.slice(wireBefore);
   assert('S1 scenario reports pass', outcome.passed, `${passedCount}/${outcome.assertions.length} assertions`);
-  assert('S1 terminal state COMMITTED', dialog?.state === 'COMMITTED', dialog?.state);
-  assert('S1 exactly 3 side-effects', dialog?.sideEffects === 3, String(dialog?.sideEffects));
-  assert('S1 applied order 1,2,3', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
-  assert('S1 no duplicate suppression', dialog?.suppressed === 0, String(dialog?.suppressed));
-  assert('S1 wire feed emitted packets', wire.filter((event) => event.phase === 'sent').length >= 3, `${wire.length} events`);
-  assert('S1 wire feed reached a terminal phase', wire.some((event) => event.phase === 'done'), wire.map((event) => event.phase).join(','));
-  assert('S1 wire events are strictly ordered', wire.every((event, index) => index === 0 || event.id > wire[index - 1].id), 'monotonic ids');
+  assert('S1 both dialogs completed', d1?.state === 'COMMITTED' && d2?.state === 'COMMITTED', `D1:${d1?.state} D2:${d2?.state}`);
+  assert('S1 D1 processed 3 requests', d1?.sideEffects === 3, String(d1?.sideEffects));
+  assert('S1 D2 processed 2 requests', d2?.sideEffects === 2, String(d2?.sideEffects));
+  assert('S1 no cross-contamination', d1?.sideEffects + d2?.sideEffects === 5, `total=${d1?.sideEffects + d2?.sideEffects}`);
+  assert('S1 wire feed emitted packets for both dialogs', wire.filter((event) => event.phase === 'sent').length >= 5, `${wire.length} events`);
 }
 
 /* ---------------------------------------------------------------- */
-/* Scenario 2 - out-of-order reordering                             */
+/* Scenario 2 - request lost in transit → retry                     */
 /* ---------------------------------------------------------------- */
 {
   const outcome = await run(() => eng().runScenario(2));
   const dialog = findDialog(outcome.dialogId);
   const passedCount = outcome.assertions.filter((row) => row.ok).length;
   assert('S2 scenario reports pass', outcome.passed, `${passedCount}/${outcome.assertions.length} assertions`);
-  assert('S2 applied order 1,2,3 despite 3,1,2 on the wire', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
-  assert('S2 reorder buffer drained', dialog?.buffered.length === 0, JSON.stringify(dialog?.buffered));
-  assert('S2 no duplicates', dialog?.suppressed === 0, String(dialog?.suppressed));
+  assert('S2 all 3 requests processed after retry', dialog?.sideEffects === 3, String(dialog?.sideEffects));
+  assert('S2 applied order 1,2,3', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
+  assert('S2 no duplicates (first never arrived)', dialog?.suppressed === 0, String(dialog?.suppressed));
+  assert('S2 terminal state COMMITTED', dialog?.state === 'COMMITTED', dialog?.state);
 }
 
 /* ---------------------------------------------------------------- */
-/* Scenario 3 - mid-task drop + durable recovery                     */
+/* Scenario 3 - response lost → duplicate request                   */
 /* ---------------------------------------------------------------- */
 {
-  const recoveryBefore = eng().metrics.recoveryAttempted;
+  const dedupBefore = eng().metrics.dedup;
   const outcome = await run(() => eng().runScenario(3));
   const dialog = findDialog(outcome.dialogId);
   const passedCount = outcome.assertions.filter((row) => row.ok).length;
   assert('S3 scenario reports pass', outcome.passed, `${passedCount}/${outcome.assertions.length} assertions`);
-  assert('S3 terminal state RECOVERED', dialog?.state === 'RECOVERED', dialog?.state);
-  assert('S3 dialog was rehydrated from the durable store', dialog?.restored === true, String(dialog?.restored));
-  assert('S3 task identity stable', /^task-[0-9a-f]{8}$/.test(dialog?.taskId ?? ''), dialog?.taskId);
-  assert('S3 exactly 3 side-effects (no double-apply)', dialog?.sideEffects === 3, String(dialog?.sideEffects));
-  assert('S3 applied order 1,2,3', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
-  assert('S3 recovery counted in metrics', eng().metrics.recoveryAttempted > recoveryBefore, `${recoveryBefore} -> ${eng().metrics.recoveryAttempted}`);
-  assert(
-    'S3 adapter + bridge back online after restart',
-    eng().nodes.adapterA.status === 'online' && eng().nodes.bridge.status === 'online',
-    `${eng().nodes.adapterA.status}/${eng().nodes.bridge.status}`,
-  );
+  assert('S3 terminal state COMMITTED', dialog?.state === 'COMMITTED', dialog?.state);
+  assert('S3 only 2 work items executed (retry blocked)', dialog?.sideEffects === 2, String(dialog?.sideEffects));
+  assert('S3 one duplicate suppressed', dialog?.suppressed === 1, String(dialog?.suppressed));
+  assert('S3 applied order 1,2', dialog?.appliedOrder.join(',') === '1,2', dialog?.appliedOrder.join('>'));
+  assert('S3 global dedup counter incremented', eng().metrics.dedup > dedupBefore, `${dedupBefore} -> ${eng().metrics.dedup}`);
 }
 
 /* ---------------------------------------------------------------- */
-/* Scenario 4 - request deduplication                               */
+/* Scenario 4 - Adapter B restart → durable state recovery          */
 /* ---------------------------------------------------------------- */
 {
-  const dedupBefore = eng().metrics.dedup;
+  const recoveryBefore = eng().metrics.recoveryAttempted || 0;
   const outcome = await run(() => eng().runScenario(4));
   const dialog = findDialog(outcome.dialogId);
   const passedCount = outcome.assertions.filter((row) => row.ok).length;
   assert('S4 scenario reports pass', outcome.passed, `${passedCount}/${outcome.assertions.length} assertions`);
-  assert('S4 side-effect ledger holds exactly 1', dialog?.sideEffects === 1, String(dialog?.sideEffects));
-  assert('S4 all 4 replays rejected', dialog?.suppressed === 4, String(dialog?.suppressed));
-  assert('S4 global dedup counter advanced by 4', eng().metrics.dedup - dedupBefore === 4, String(eng().metrics.dedup - dedupBefore));
+  assert('S4 terminal state COMMITTED', dialog?.state === 'COMMITTED', dialog?.state);
+  assert('S4 exactly 3 work items (no double-apply)', dialog?.sideEffects === 3, String(dialog?.sideEffects));
+  assert('S4 one duplicate suppressed (retry after restart)', dialog?.suppressed === 1, String(dialog?.suppressed));
+  assert('S4 applied order 1,2,3', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
+  assert('S4 task identity stable across restart', /^task-[0-9a-f]{8}$/.test(dialog?.taskId ?? ''), dialog?.taskId);
 }
 
 /* ---------------------------------------------------------------- */
-/* Scenario 5 - gap detection + automated re-transmission           */
+/* Scenario 5 - Adapter A restart → task identity preserved         */
 /* ---------------------------------------------------------------- */
 {
+  const recoveryBefore = eng().metrics.recoveryAttempted || 0;
   const outcome = await run(() => eng().runScenario(5));
   const dialog = findDialog(outcome.dialogId);
   const passedCount = outcome.assertions.filter((row) => row.ok).length;
   assert('S5 scenario reports pass', outcome.passed, `${passedCount}/${outcome.assertions.length} assertions`);
-  assert('S5 all 4 sequences applied in order', dialog?.appliedOrder.join(',') === '1,2,3,4', dialog?.appliedOrder.join('>'));
-  assert('S5 exactly 4 side-effects', dialog?.sideEffects === 4, String(dialog?.sideEffects));
-  assert('S5 buffer fully drained', dialog?.buffered.length === 0, JSON.stringify(dialog?.buffered));
-  const nack = eng().logs.find((entry) => entry.kind === 'recovery' && entry.msg.includes('NACK seq 2, 3'));
-  assert('S5 emitted a NACK for the missing window', Boolean(nack), nack?.msg ?? 'not found');
+  assert('S5 terminal state RECOVERED', dialog?.state === 'RECOVERED', dialog?.state);
+  assert('S5 dialog was rehydrated from durable store', dialog?.restored === true, String(dialog?.restored));
+  assert('S5 task identity stable', /^task-[0-9a-f]{8}$/.test(dialog?.taskId ?? ''), dialog?.taskId);
+  assert('S5 exactly 3 side-effects (no double-apply)', dialog?.sideEffects === 3, String(dialog?.sideEffects));
+  assert('S5 applied order 1,2,3', dialog?.appliedOrder.join(',') === '1,2,3', dialog?.appliedOrder.join('>'));
+  assert('S5 recovery counted in metrics', eng().metrics.recoveryAttempted > recoveryBefore, `${recoveryBefore} -> ${eng().metrics.recoveryAttempted}`);
+  assert(
+    'S5 adapter back online after restart',
+    eng().nodes.adapterA.status === 'online',
+    eng().nodes.adapterA.status,
+  );
 }
 
 /* ---------------------------------------------------------------- */

@@ -965,134 +965,302 @@ export function useCorrelationEngine() {
   }
 
   const scenarioBody = {
+    // Scenario 1: Multiple Dialogs → Correct Correlation
     1: async ({ id, protocol, assert: check }) => {
-      say(`A new task is created on the Sender Agent`, 'info');
-      for (const seq of [1, 2, 3]) {
-        sendFrame({ dialogId: id, seq, protocol, payload: { step: seq, op: 'advance_dialog' } });
-        say(`Packet ${seq} crosses the network and its work is done once`, 'info');
-        await sleep(220);
-      }
-      await waitForTerminal(id);
-      const view = viewOf(id);
-      check('All 3 work items completed', view?.sideEffects === 3, `work items=${view?.sideEffects}`);
-      check('The task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
-      check('Work happened in the correct order, 1 then 2 then 3', view?.appliedOrder.join(',') === '1,2,3', `order=${view?.appliedOrder.join(', ')}`);
+      const d1 = `${id}-D1`;
+      const d2 = `${id}-D2`;
+      
+      say('Two independent dialogs (D1, D2) are created simultaneously', 'info');
+      
+      // D1: Request 1
+      sendFrame({ dialogId: d1, seq: 1, protocol, payload: { dialog: 'D1', step: 1 } });
+      say('D1: Request 1 sent and processed', 'info');
+      await sleep(180);
+      
+      // D2: Request 1
+      sendFrame({ dialogId: d2, seq: 1, protocol, payload: { dialog: 'D2', step: 1 } });
+      say('D2: Request 1 sent and processed', 'info');
+      await sleep(180);
+      
+      // D1: Request 2
+      sendFrame({ dialogId: d1, seq: 2, protocol, payload: { dialog: 'D1', step: 2 } });
+      say('D1: Request 2 sent and processed', 'info');
+      await sleep(180);
+      
+      // D2: Request 2 (LOST)
+      addBlackhole(d2, 2);
+      sendFrame({ dialogId: d2, seq: 2, protocol, payload: { dialog: 'D2', step: 2 } });
+      say('D2: Request 2 sent but lost in the network', 'warn');
+      await sleep(300);
+      
+      // D2: Request 2 (RETRY)
+      clearBlackholes(d2);
+      sendFrame({ dialogId: d2, seq: 2, protocol, payload: { dialog: 'D2', step: 2 }, attempt: 2, source: 'sender-retry' });
+      say('D2: Request 2 retried successfully', 'info');
+      await sleep(180);
+      
+      // D1: Request 3
+      sendFrame({ dialogId: d1, seq: 3, protocol, payload: { dialog: 'D1', step: 3 } });
+      say('D1: Request 3 sent and processed', 'info');
+      
+      await waitForTerminal(d1, 5000);
+      await waitForTerminal(d2, 5000);
+      
+      const view1 = viewOf(d1);
+      const view2 = viewOf(d2);
+      
+      check('D1 completed all 3 requests', view1?.sideEffects === 3, `D1 work items=${view1?.sideEffects}`);
+      check('D1 processed in order: 1,2,3', view1?.appliedOrder.join(',') === '1,2,3', `D1 order=${view1?.appliedOrder.join(',')}`);
+      check('D1 finished successfully', view1?.state === 'COMMITTED', `D1 status=${view1?.state}`);
+      
+      check('D2 completed 2 requests (lost request retried)', view2?.sideEffects === 2, `D2 work items=${view2?.sideEffects}`);
+      check('D2 processed in order: 1,2', view2?.appliedOrder.join(',') === '1,2', `D2 order=${view2?.appliedOrder.join(',')}`);
+      check('D2 finished successfully', view2?.state === 'COMMITTED', `D2 status=${view2?.state}`);
+      check('No cross-contamination between dialogs', view1?.sideEffects + view2?.sideEffects === 5, `total=${view1?.sideEffects + view2?.sideEffects}`);
     },
 
+    // Scenario 2: Request Lost → Retry
     2: async ({ id, protocol, assert: check }) => {
-      say('The network will deliver the packets as 3, then 1, then 2', 'info');
-      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 } });
-      say('Packet 3 arrived first, so it is safely held back', 'info');
-      await sleep(260);
+      say('A request is sent but lost in the network', 'info');
+      
+      // Request 1: Sent and arrives
       sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 } });
-      say('Packet 1 is processed while packet 3 waits', 'info');
-      await sleep(260);
+      say('Request 1 arrives and is processed', 'info');
+      await sleep(220);
+      
+      // Request 2: Lost (never reaches receiver)
+      addBlackhole(id, 2);
       sendFrame({ dialogId: id, seq: 2, protocol, payload: { step: 2 } });
-      say('Packet 2 arrives, so packet 3 is released and everything is now in order', 'info');
+      say('Request 2 is sent but lost in transit—never reaches the receiver', 'warn');
+      await sleep(500);
+      
+      const midway = viewOf(id);
+      check('Only request 1 was processed', midway?.sideEffects === 1, `work items=${midway?.sideEffects}`);
+      check('Receiver is waiting for request 2', midway?.nextSeq === 2, `waiting for seq=${midway?.nextSeq}`);
+      
+      // Request 2: Retry (sender timeout triggers retry)
+      clearBlackholes(id);
+      sendFrame({ dialogId: id, seq: 2, protocol, payload: { step: 2 }, attempt: 2, source: 'sender-retry' });
+      say('Sender timeout triggers retry—request 2 sent again', 'info');
+      await sleep(220);
+      
+      // Request 3: Normal
+      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 } });
+      say('Request 3 sent and processed', 'info');
+      
       await waitForTerminal(id, 5000);
       const view = viewOf(id);
-      check('The held-back packet was released', view?.buffered.length === 0, `still holding=${view?.buffered.length}`);
-      check('Work was done in the correct order, 1 then 2 then 3', view?.appliedOrder.join(',') === '1,2,3', `order=${view?.appliedOrder.join(', ')}`);
-      check('All 3 work items completed', view?.sideEffects === 3, `work items=${view?.sideEffects}`);
-      check('The task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
+      
+      check('All 3 requests processed after retry', view?.sideEffects === 3, `work items=${view?.sideEffects}`);
+      check('Requests processed in order: 1,2,3', view?.appliedOrder.join(',') === '1,2,3', `order=${view?.appliedOrder.join(',')}`);
+      check('No duplicates detected (first never arrived)', view?.suppressed === 0, `duplicates=${view?.suppressed}`);
+      check('Task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
     },
 
+    // Scenario 3: Response Lost → Duplicate Request
     3: async ({ id, protocol, assert: check }) => {
+      say('Request is processed but response is lost', 'info');
+      
+      // Request 1: Processed successfully
       sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 } });
+      say('Request 1 arrives, processed, side effect executed', 'info');
+      await sleep(220);
+      
+      const after1 = viewOf(id);
+      check('Side effect executed once', after1?.sideEffects === 1, `work items=${after1?.sideEffects}`);
+      check('Request 1 recorded in dedup log', after1?.appliedCount === 1, `dedup records=${after1?.appliedCount}`);
+      
+      // Simulate response lost (sender doesn't receive ack)
+      say('Response is lost—sender never receives acknowledgment', 'warn');
+      await sleep(300);
+      
+      // Request 1: Retry (sender retries because no ack received)
+      sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 }, attempt: 2, source: 'sender-retry' });
+      say('Sender retries request 1 (same seq, same payload)', 'warn');
+      await sleep(220);
+      
+      const after_retry = viewOf(id);
+      check('Duplicate detected by receiver', after_retry?.suppressed === 1, `duplicates blocked=${after_retry?.suppressed}`);
+      check('Side effect NOT re-executed', after_retry?.sideEffects === 1, `work items=${after_retry?.sideEffects}`);
+      
+      // Request 2: Continue normally
       sendFrame({ dialogId: id, seq: 2, protocol, payload: { step: 2 } });
-      await sleep(280);
-      const before = viewOf(id);
-      say('Packets 1 and 2 are done, and the task is saved in the database', 'info');
-      check('The task was saved in the database before the fault', store.current.durable.has(id), `checkpoints=${store.current.walLsn}`);
-
-      partitionBridge(id, 3);
-      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 } });
-      say('Packet 3 is sent, but the connection breaks and it is lost', 'warn');
-      await sleep(240);
-
-      const taskId = before?.taskId;
-      killAdapter(id);
-      say('The Sender Agent crashes and loses everything in memory', 'warn');
-      await sleep(360);
-      check('Nothing about this task is left in memory', !store.current.dialogs.has(id), `tasks in memory=${store.current.dialogs.size}`);
-
-      await coldStartAdapter();
-      const revived = viewOf(id);
-      say('The agent has restarted and reloaded the unfinished task from the database', 'info');
-      check('The task is still recognised as the same task', revived?.taskId === taskId, `reference kept`);
-      check('The 2 completed work items were restored, not repeated', revived?.sideEffects === 2, `work items=${revived?.sideEffects}`);
-      check('The record of finished work survived the crash', revived?.appliedCount === 2, `remembered=${revived?.appliedCount}`);
-
-      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 }, attempt: 2, source: 'sender-retry' });
-      say('Now that the connection is back, packet 3 is sent again', 'info');
-      await waitForTerminal(id, 6000);
-      const final = viewOf(id);
-      check('The task was recovered rather than restarted', final?.state === 'RECOVERED', `status=${final?.state}`);
-      check('All 3 work items completed with nothing repeated', final?.sideEffects === 3, `work items=${final?.sideEffects}`);
-      check('Work was done in the correct order, 1 then 2 then 3', final?.appliedOrder.join(',') === '1,2,3', `order=${final?.appliedOrder.join(', ')}`);
+      say('Request 2 sent and processed normally', 'info');
+      
+      await waitForTerminal(id, 5000);
+      const view = viewOf(id);
+      
+      check('Only 2 work items executed (1 retry blocked)', view?.sideEffects === 2, `work items=${view?.sideEffects}`);
+      check('1 duplicate was suppressed', view?.suppressed === 1, `duplicates=${view?.suppressed}`);
+      check('Processed in order: 1,2', view?.appliedOrder.join(',') === '1,2', `order=${view?.appliedOrder.join(',')}`);
+      check('Task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
     },
 
+    // Scenario 4: Adapter B Restart → Durable State Recovery
     4: async ({ id, protocol, assert: check }) => {
-      const payload = { operation: 'upsert', collection: 'dialog_checkpoint', key: 'ue-042/stream-7', value: { phase: 'committed' } };
-      sendFrame({ dialogId: id, seq: 1, protocol, payload });
-      say('Packet 1 is processed and one work item is recorded', 'info');
+      say('Adapter B (receiver) will process requests, then crash and restart', 'info');
+      
+      // Request 1 & 2: Processed before crash
+      sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 } });
+      say('Request 1 processed by Adapter B', 'info');
       await sleep(220);
-      const baseline = viewOf(id);
-      check('One work item recorded', baseline?.sideEffects === 1, `work items=${baseline?.sideEffects}`);
-
-      for (let replay = 1; replay <= 3; replay += 1) {
-        sendFrame({ dialogId: id, seq: 1, protocol, payload, source: 'replay' });
-        say(`Copy ${replay} of packet 1 arrives — it looks identical to the first`, 'warn');
-        await sleep(190);
+      
+      sendFrame({ dialogId: id, seq: 2, protocol, payload: { step: 2 } });
+      say('Request 2 processed by Adapter B', 'info');
+      await sleep(220);
+      
+      const before_crash = viewOf(id);
+      const taskId = before_crash?.taskId;
+      check('2 requests processed before crash', before_crash?.sideEffects === 2, `work items=${before_crash?.sideEffects}`);
+      check('Dialog persisted to database', store.current.durable.has(id), `durable records=${store.current.durable.size}`);
+      
+      // Simulate Adapter B crash: persist first, then wipe runtime state
+      const dialog_before_crash = store.current.dialogs.get(id);
+      if (dialog_before_crash) {
+        persist(dialog_before_crash);
+        clearDialogTimers(dialog_before_crash);
       }
-
-      sendFrame({
-        dialogId: id,
-        seq: 1,
-        protocol,
-        payload: { ...payload, value: { phase: 'tampered' } },
-        source: 'replay-tampered',
-      });
-      say('A 4th copy arrives, but this time with different contents', 'warn');
-      await waitForTerminal(id, 6000);
-
+      say('Adapter B crashes and loses all in-memory state', 'warn');
+      store.current.dialogs.delete(id);
+      publish();
+      await sleep(400);
+      
+      check('Dialog removed from runtime memory', !store.current.dialogs.has(id), `runtime dialogs=${store.current.dialogs.size}`);
+      check('Dialog still exists in durable storage', store.current.durable.has(id), `durable has dialog`);
+      
+      // Simulate Adapter B restart: reload from durable storage (mimic coldStartAdapter logic)
+      say('Adapter B restarts and reloads state from database', 'info');
+      const snapshot = store.current.durable.get(id);
+      if (snapshot && !snapshot.terminal && !store.current.dialogs.has(id)) {
+        const dialog = createDialog(snapshot.dialog_id, snapshot.protocol);
+        dialog.taskId = snapshot.task_id;
+        dialog.state = snapshot.state;
+        dialog.history = [
+          ...snapshot.history,
+          {
+            state: snapshot.state,
+            at: Date.now(),
+            from: snapshot.state,
+            reason: 'Adapter B rehydrated from durable snapshot',
+            tx: nextTx(),
+          },
+        ];
+        dialog.nextSeq = snapshot.next_sequence;
+        dialog.seen = { ...snapshot.applied };
+        dialog.appliedOrder = [...snapshot.applied_order];
+        dialog.sideEffects = snapshot.side_effects;
+        dialog.suppressed = snapshot.suppressed;
+        dialog.createdAt = new Date(snapshot.created_at).getTime();
+        // Don't set restored=true for Adapter B restart (receiver recovery)
+        // restored flag is for Adapter A (sender) restart only
+        dialog.restarts = 1;
+        
+        for (const seq of snapshot.buffered) {
+          dialog.buffer[seq] = {
+            packet: makePacket({
+              dialogId: snapshot.dialog_id,
+              seq,
+              protocol: snapshot.protocol,
+              payload: { __restored_from: 'wal', __seq: seq },
+              tx: nextTx(),
+              attempt: 1,
+              source: 'sqlite-rehydrate',
+            }),
+            attempts: 0,
+            firstSeenAt: Date.now(),
+          };
+        }
+        
+        store.current.dialogs.set(dialog.id, dialog);
+        store.current.recoveryAttempted += 1;
+        dialog.pendingRecovery = true;
+        
+        writeLog('recovery', 'adapter-b', dialog.id, `Adapter B restarted · durable snapshot rehydrated · next_seq=${dialog.nextSeq}, side_effects=${dialog.sideEffects}`, {
+          task_id: dialog.taskId,
+          next_sequence: dialog.nextSeq,
+          side_effects: dialog.sideEffects,
+          restored_state: snapshot.state,
+        });
+        
+        if (!isTerminal(dialog.state)) armSettle(dialog);
+        publish();
+      }
+      await sleep(300);
+      
+      const after_restart = viewOf(id);
+      check('Dialog reloaded into runtime', store.current.dialogs.has(id), `dialog restored`);
+      check('Task identity preserved', after_restart?.taskId === taskId, `taskId match`);
+      check('Previous work items restored', after_restart?.sideEffects === 2, `work items=${after_restart?.sideEffects}`);
+      check('Dedup records restored', after_restart?.appliedCount === 2, `dedup count=${after_restart?.appliedCount}`);
+      
+      // Request 1 retried (duplicate detection should work)
+      sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 }, attempt: 2, source: 'sender-retry' });
+      say('Request 1 retried—should be detected as duplicate', 'info');
+      await sleep(220);
+      
+      const after_dup = viewOf(id);
+      check('Duplicate detected after restart', after_dup?.suppressed === 1, `duplicates=${after_dup?.suppressed}`);
+      check('Work not repeated', after_dup?.sideEffects === 2, `work items=${after_dup?.sideEffects}`);
+      
+      // Request 3: Continue processing
+      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 } });
+      say('Request 3 sent—processing continues normally', 'info');
+      
+      await waitForTerminal(id, 5000);
       const view = viewOf(id);
-      check('All 4 duplicate copies were blocked', view?.suppressed === 4, `blocked=${view?.suppressed}`);
-      check('The work was still only done once', view?.sideEffects === 1, `work items=${view?.sideEffects}`);
-      check('No extra work items were created by the duplicates', view?.sideEffects === baseline?.sideEffects, `${view?.sideEffects} = ${baseline?.sideEffects}`);
-      check('The task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
+      
+      check('All 3 requests processed (1 duplicate blocked)', view?.sideEffects === 3, `work items=${view?.sideEffects}`);
+      check('Order preserved: 1,2,3', view?.appliedOrder.join(',') === '1,2,3', `order=${view?.appliedOrder.join(',')}`);
+      check('Task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
     },
 
+    // Scenario 5: Adapter A Restart → Task Identity Preserved
     5: async ({ id, protocol, assert: check }) => {
+      say('Adapter A (sender) starts task, then will crash mid-task', 'info');
+      
+      // Requests 1 & 2: Sent and processed
       sendFrame({ dialogId: id, seq: 1, protocol, payload: { step: 1 } });
-      say('Packet 1 is processed', 'info');
+      say('Request 1 sent and processed', 'info');
       await sleep(220);
-
-      addBlackhole(id, 2);
-      addBlackhole(id, 3);
+      
       sendFrame({ dialogId: id, seq: 2, protocol, payload: { step: 2 } });
-      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 } });
-      say('Packets 2 and 3 disappear inside the network', 'warn');
+      say('Request 2 sent and processed', 'info');
       await sleep(220);
-
-      sendFrame({ dialogId: id, seq: 4, protocol, payload: { step: 4 } });
-      say('Packet 4 arrives, but packets 2 and 3 are still missing, so it waits', 'info');
-      await sleep(420);
-
-      const gapped = viewOf(id);
-      check('The gap was spotted and packet 4 was held back', gapped?.buffered.includes(4) === true, `holding=${gapped?.buffered}`);
-      check('The receiver knows it is still waiting for packet 2', gapped?.nextSeq === 2, `waiting for=${gapped?.nextSeq}`);
-      check('Exactly packets 2 and 3 were identified as missing', gapped?.missing.length === 2, `missing=${gapped?.missing}`);
-
-      clearBlackholes(id);
-      say('The connection is working again, so the requested packets can arrive', 'info');
-      await waitForTerminal(id, 7000);
-
+      
+      const before_crash = viewOf(id);
+      const taskId = before_crash?.taskId;
+      check('2 requests completed before crash', before_crash?.sideEffects === 2, `work items=${before_crash?.sideEffects}`);
+      check('Dialog saved to database', store.current.durable.has(id), `persisted`);
+      
+      // Simulate Adapter A crash
+      killAdapter(id);
+      say('Adapter A crashes mid-task and loses memory', 'warn');
+      await sleep(400);
+      
+      check('Dialog removed from runtime', !store.current.dialogs.has(id), `runtime cleared`);
+      
+      // Simulate Adapter A restart
+      await coldStartAdapter();
+      say('Adapter A restarts and reloads unfinished task from database', 'info');
+      await sleep(300);
+      
+      const after_restart = viewOf(id);
+      check('Dialog reloaded with same ID', store.current.dialogs.has(id), `dialog restored`);
+      check('Task identity preserved (same task_id)', after_restart?.taskId === taskId, `taskId=${after_restart?.taskId}`);
+      check('Completed work remembered', after_restart?.sideEffects === 2, `work items=${after_restart?.sideEffects}`);
+      check('Marked as restored', after_restart?.restored === true, `restored flag`);
+      
+      // Request 3: Continue with same task
+      sendFrame({ dialogId: id, seq: 3, protocol, payload: { step: 3 }, source: 'sender-post-restart' });
+      say('Request 3 sent with same dialog_id—task resumes', 'info');
+      
+      await waitForTerminal(id, 6000);
       const view = viewOf(id);
-      check('The missing packets arrived and everything is in order', view?.appliedOrder.join(',') === '1,2,3,4', `order=${view?.appliedOrder.join(', ')}`);
-      check('The held-back packet was released', view?.buffered.length === 0, `still holding=${view?.buffered.length}`);
-      check('All 4 work items completed with nothing repeated', view?.sideEffects === 4, `work items=${view?.sideEffects}`);
-      check('The task finished successfully', view?.state === 'COMMITTED', `status=${view?.state}`);
+      
+      check('All 3 requests completed', view?.sideEffects === 3, `work items=${view?.sideEffects}`);
+      check('No work was repeated', view?.appliedOrder.join(',') === '1,2,3', `order=${view?.appliedOrder.join(',')}`);
+      check('Task marked as RECOVERED (not COMMITTED)', view?.state === 'RECOVERED', `status=${view?.state}`);
+      check('Task identity remained stable throughout restart', view?.taskId === taskId, `stable taskId`);
     },
   };
 
