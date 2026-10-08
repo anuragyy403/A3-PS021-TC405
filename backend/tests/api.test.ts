@@ -565,10 +565,9 @@ describe('malformed input and unknown routes', () => {
     }
   });
 
-  it('unknown routes → 404 NOT_FOUND; scenario routes are not registered yet', async () => {
+  it('unknown routes → 404 NOT_FOUND', async () => {
     expectError(await get('/api/nope'), 404, 'NOT_FOUND');
-    expectError(await get('/api/scenarios'), 404, 'NOT_FOUND');
-    expectError(await post('/api/scenarios/1/run'), 404, 'NOT_FOUND');
+    expectError(await post('/api/nope'), 404, 'NOT_FOUND');
   });
 
   it('an unexpected error → 500 INTERNAL_SERVER_ERROR without a stack or path', async () => {

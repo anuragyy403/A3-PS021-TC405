@@ -1,6 +1,6 @@
 # Nighthawks — PS-021 Project Context
 
-**Last Updated:** 2026-10-08 — Phase 3 complete (backend correctness / recovery hardening); Phase 4 (documentation alignment) in progress
+**Last Updated:** 2026-10-08 — Phases 0–6 complete (backend + HTTP API + scenarios via HTTP); next: Phase 7 (frontend ↔ backend integration)
 **Team:** Nighthawks
 **Project:** PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters
 **Category:** AIORI-3 / 6G & Future Networks
@@ -62,8 +62,8 @@ The official PS PDF is **not stored in the repository** (it was provided separat
 
 - Backend language — Node.js/TypeScript
 - Database technology — SQLite file via sql.js
-- Web framework — Express (only `GET /health` so far)
-- Frontend↔backend protocol — planned REST (+ possibly SSE); designed in Phase 5
+- Web framework — Express (HTTP API implemented in Phase 6, `docs/API_DESIGN.md`)
+- Frontend↔backend protocol — REST + cursor polling of `/api/events` (no SSE)
 - Whether adapters are separate processes — single process, logical modules
 - Specific lifecycle state names — 5-state backend model (§5)
 - Specific scenario definitions — five failure experiments (§9)
@@ -241,7 +241,7 @@ Single Node.js process (tests today; Express server later)
 | **sql.js 1.12** | SQLite driver (WebAssembly) | Used because better-sqlite3 needs a C++ build toolchain that is unavailable on the development machine |
 | **SQLite file** | Durable storage | In memory while running; whole DB written to the file after every mutation |
 | **Zod** | Validation schemas | Record schemas defined; API use comes later |
-| **Vitest 1.6** (+ supertest) | Testing | 7 files, 142 tests |
+| **Vitest 1.6** (+ supertest) | Testing | 14 files, 265 tests |
 
 **(outdated)** "better-sqlite3 — approved driver", "pino (optional)", "True ACID persistence" and "synchronous API": sql.js is in use; durability comes from `persistToDisk` (a non-atomic in-place file write), not from SQLite's journal.
 
@@ -371,9 +371,9 @@ Adapters, dialog state, lifecycle, correlation, deduplication, persistence, reco
 
 Dashboard layout, metrics, pipeline visualizer, scenario hub, task list, activity feed, narration, presentation utilities, API client.
 
-### Planned API (to be designed in Phase 5 — nothing below exists yet)
+### API (implemented in Phase 6)
 
-Candidate endpoints from Phase 1: `GET /api/dialogs`, `GET /api/dialogs/:id`, `POST /api/scenarios/:id/run`, adapter crash/restart, reset, and an event stream. Phase 5 decides the actual contract. Today only `GET /health` exists.
+Contract: `docs/API_DESIGN.md` (its "Implementation status" section lists every deviation). Endpoints: `GET /health`, `GET /api/state`, `GET /api/dialogs[/:id]`, `POST /api/dialogs`, `POST /api/dialogs/:id/requests`, `POST /api/dialogs/:id/requests/:seq/retry`, `POST /api/dialogs/:id/complete|fail`, `POST /api/adapters/:A|B/restart`, `GET /api/scenarios`, `POST /api/scenarios/:id/run`, `GET /api/events?since=`, `POST /api/reset`. Routes call only `SimulationRuntime` (`backend/src/runtime/`).
 
 ---
 
@@ -386,10 +386,12 @@ Candidate endpoints from Phase 1: `GET /api/dialogs`, `GET /api/dialogs/:id`, `P
             five scenario tests
 ✅ Phase 3a: Adapter A durable send log + recover()           (commit fc67906)
 ✅ Phase 3b: Lifecycle completion + terminal-state protection (commit 0a8b295)
-🔄 Phase 4: Documentation alignment + docs/EXPERIMENTAL_SCHEMA.md (in progress)
-⏸ Phase 5: API design
-⏸ Phase 6: API implementation
-⏸ Phase 7: Frontend ↔ backend integration
+✅ Phase 4: Documentation alignment + docs/EXPERIMENTAL_SCHEMA.md      (commit 975b2ff)
+✅ Phase 5: API design — docs/API_DESIGN.md                            (commit b548274)
+✅ Phase 6a: SimulationRuntime, EventLog, ObservedTransport, build fix (commit 85032b4)
+✅ Phase 6b: HTTP routes, validation, error mapping                    (commit f2b50bd)
+✅ Phase 6c: Scenario module, E11/E12, five scenarios via HTTP, docs
+⏸ Phase 7: Frontend ↔ backend integration   ← NEXT
 ⏸ Phase 8: Frontend cleanup (protocol envelopes/labels, WAITING_ACK handling,
             simulation-only wording)
 ⏸ Phase 9: End-to-end tests
@@ -398,7 +400,7 @@ Candidate endpoints from Phase 1: `GET /api/dialogs`, `GET /api/dialogs/:id`, `P
              repo hand-over to aiori-hackathon)
 ```
 
-Backend tests: 7 files, 142 passing (2026-10-08).
+Backend tests: 14 files, 265 passing (2026-10-08).
 
 ---
 
@@ -487,7 +489,7 @@ Backend tests: 7 files, 142 passing (2026-10-08).
 6. **Retry budget** also counts attempts that got an `error` reply
 7. **Side-effect counter** is in memory
 8. **Mock agents** only
-9. **Build gap:** `npm run build` (tsc) does not copy `src/db/schema.sql` into `dist/`, so `npm start` cannot open the schema; use `npm run dev`
+9. **API is local and unauthenticated:** one runtime and one lock; mutations during a scenario run get `409 RUNTIME_BUSY`; activity events are in memory only (the Phase 4 build gap — `schema.sql` not copied to `dist/` — was fixed in 6a)
 
 ---
 
@@ -562,8 +564,8 @@ The frontend's `WAITING_ACK` supports its quiet-period settle animation. PS-021 
 - ✅ Deduplication keyed on `(dialog_id, seq)`
 - ✅ SQLite persistence of dialogs, requests and the send log
 - ✅ Recovery of non-terminal dialogs after restart (`AdapterA.recover()`)
-- ⏸ Scenario orchestration exposed through the API (Phases 5–6)
-- ⏸ REST API (+ event stream) for frontend integration (Phases 5–7)
+- ✅ Scenario orchestration exposed through the API (`POST /api/scenarios/:id/run`)
+- ✅ REST API + polled event stream for frontend integration (wiring the UI is Phase 7)
 
 ### Documentation Must Include
 
@@ -579,6 +581,6 @@ The frontend's `WAITING_ACK` supports its quiet-period settle animation. PS-021 
 
 ## End of Project Context Document
 
-**Current Status:** Phases 0–3 complete; Phase 4 (documentation alignment) in progress. Next: Phase 5 (API design).
+**Current Status:** Phases 0–6 complete. Next: Phase 7 (frontend ↔ backend integration).
 
 **Last Updated:** 2026-10-08

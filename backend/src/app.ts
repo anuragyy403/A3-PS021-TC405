@@ -16,10 +16,10 @@
  *   POST /api/dialogs/:dialogId/complete              E8
  *   POST /api/dialogs/:dialogId/fail                  E9
  *   POST /api/adapters/:adapter/restart               E10
+ *   GET  /api/scenarios                               E11
+ *   POST /api/scenarios/:id/run                       E12
  *   GET  /api/events                                  E13
  *   POST /api/reset                                   E14
- *
- * Scenario routes (E11/E12) arrive in Phase 6c.
  */
 
 import express, { type Express, type Request, type Response } from 'express';
@@ -28,6 +28,7 @@ import type { SimulationRuntime } from './runtime/SimulationRuntime.js';
 import { errorMiddleware, notFoundHandler } from './http/errorMiddleware.js';
 import { dialogRoutes } from './http/routes/dialogs.js';
 import { runtimeRoutes } from './http/routes/runtime.js';
+import { scenarioRoutes } from './http/routes/scenarios.js';
 
 export function createApp(runtime: SimulationRuntime): Express {
   const app = express();
@@ -59,6 +60,7 @@ export function createApp(runtime: SimulationRuntime): Express {
 
   app.use('/api', runtimeRoutes(runtime));
   app.use('/api', dialogRoutes(runtime));
+  app.use('/api', scenarioRoutes(runtime));
 
   // Unknown route → 404 (must come after all routes)
   app.use(notFoundHandler);

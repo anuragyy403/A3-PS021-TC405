@@ -46,7 +46,9 @@ import { LIFECYCLE_STATES, isTerminal } from '../types/index.js';
 import type { DialogRecord, LifecycleState, OutboundRequestRecord } from '../types/index.js';
 import { logger } from '../logger.js';
 import { EventLog, newEpoch } from './EventLog.js';
-import type { ApiEvent, EventPage, NewEvent } from './EventLog.js';
+import type { ApiEvent, EventPage, EventType, NewEvent } from './EventLog.js';
+
+type ScenarioEventType = Extract<EventType, `scenario_${string}`>;
 import { ObservedTransport } from './ObservedTransport.js';
 import type { Delivery, Fault } from './ObservedTransport.js';
 
@@ -224,6 +226,9 @@ export class SimulationRuntime {
   private duplicatesTotal = 0;
   private dropsTotal      = 0;
   private readonly duplicatesByDialog = new Map<string, number>();
+  private runningScenario: number | null = null;
+  /** Last ScenarioResult per scenario id (Phase 6c).  Survives restarts; cleared by reset. */
+  private readonly scenarioResults = new Map<number, unknown>();
 
   private readonly ops: RuntimeOps = {
     startDialog: (taskId)               => this.doStartDialog(taskId),
@@ -324,6 +329,7 @@ export class SimulationRuntime {
       this.dropsTotal      = 0;
       this.duplicatesByDialog.clear();
       this.restartCount    = 0;
+      this.scenarioResults.clear();
       this.log.clear(newEpoch());
 
       this.boot();
@@ -359,7 +365,7 @@ export class SimulationRuntime {
         db_path_name:     path.basename(this.config.dbPath),
         max_attempts:     this.config.maxAttempts,
         busy:             this.locked,
-        running_scenario: null,   // set by the scenario module (Phase 6c)
+        running_scenario: this.runningScenario,
         cursor:           this.log.latestId,
         uptime_ms:        this.uptimeMs(),
       },
@@ -435,6 +441,37 @@ export class SimulationRuntime {
 
   events(since?: number, limit?: number): EventPage {
     return this.log.since(since, limit);
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario hooks (Phase 6c) — used only by src/scenarios/runner.ts
+  // -------------------------------------------------------------------------
+
+  /** Id of the event most recently appended (0 if none). */
+  latestEventId(): number {
+    return this.log.latestId;
+  }
+
+  /** Scenario currently holding the lock, or null. */
+  get runningScenarioId(): number | null {
+    return this.runningScenario;
+  }
+
+  setRunningScenario(id: number | null): void {
+    this.runningScenario = id;
+  }
+
+  /** Append a scenario_* event (actor is always 'scenario'). */
+  emitScenarioEvent(event: Omit<NewEvent, 'actor' | 'type'> & { type: ScenarioEventType }): ApiEvent {
+    return this.emit({ ...event, actor: 'scenario' });
+  }
+
+  getScenarioResult<T>(id: number): T | null {
+    return (this.scenarioResults.get(id) as T | undefined) ?? null;
+  }
+
+  setScenarioResult(id: number, result: unknown): void {
+    this.scenarioResults.set(id, result);
   }
 
   /** @internal The live sql.js handle — for tests that tamper with memory. */

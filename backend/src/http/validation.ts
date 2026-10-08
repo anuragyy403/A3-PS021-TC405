@@ -30,6 +30,10 @@ export const SendBody          = z.object({ payload: z.unknown().default(null), 
 export const RetryBody         = z.object({ fault: Fault.optional() }).strict();               // E7
 export const FailBody          = z.object({ reason: z.string().min(1).max(200) }).strict();    // E9
 export const ResetBody         = z.object({ confirm: z.literal('RESET') }).strict();           // E14
+export const RunScenarioBody   = z.object({                                                    // E12
+  step_delay_ms: z.number().int().min(0).max(1000).default(0),
+  variant:       z.enum(['response_lost', 'request_lost']).optional(),
+}).strict();
 
 // ---- queries --------------------------------------------------------------
 export const DialogsQuery      = z.object({ state: LifecycleStateSchema.optional(), limit: Limit }); // E3

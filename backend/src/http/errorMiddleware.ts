@@ -41,10 +41,13 @@ export class HttpError extends AppError {
   }
 }
 
-/** body-parser marks malformed JSON with this type (status 400). */
+/** body-parser marks its errors with a `type` (malformed JSON: status 400; too large: 413). */
+function bodyParserType(err: unknown): unknown {
+  return typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
+}
+
 function isMalformedJson(err: unknown): boolean {
-  return typeof err === 'object' && err !== null
-    && (err as { type?: unknown }).type === 'entity.parse.failed';
+  return bodyParserType(err) === 'entity.parse.failed';
 }
 
 function body(status: number, error: string, message: string, details?: unknown): ApiErrorBody {
@@ -62,6 +65,7 @@ export function toApiError(err: unknown): ApiErrorBody {
   if (isMalformedJson(err)) {
     return body(400, 'VALIDATION_ERROR', 'Malformed JSON body');
   }
+  if (bodyParserType(err) === 'entity.too.large') return body(413, 'PAYLOAD_TOO_LARGE', 'Request body too large');
   if (err instanceof HttpError)              return body(err.statusCode, err.code, err.message, err.details);
   if (err instanceof ValidationError)        return body(400, 'VALIDATION_ERROR', err.message);
   if (err instanceof NotFoundError)          return body(404, 'DIALOG_NOT_FOUND', err.message);

@@ -1,6 +1,6 @@
 # Backend HTTP API — Design (Phase 5)
 
-> **Status: design only. Nothing in this document is implemented yet.** Today the backend serves only `GET /health`. Implementation is Phase 6; frontend wiring is Phases 7–8.
+> **Status: implemented in Phase 6** (6a runtime, 6b routes, 6c scenarios). The design below is kept as written in Phase 5. Where the implementation differs, the [Implementation status](#implementation-status-phase-6) section says so, and the code wins. Frontend wiring is Phases 7–8.
 
 > **Non-claims.** This API drives two *mock* adapters in one process. It is **not** an MCP or A2A implementation, **not** an IETF standard or draft implementation, and it does **not** provide exactly-once delivery. The guarantee it exposes is the one the backend has: duplicate-side-effect prevention when the original request has already been durably recorded as processed.
 
@@ -9,6 +9,42 @@
 **Inputs read for this design:** `backend/src/{app,server}.ts`, `config/index.ts`, `errors.ts`, `types/index.ts`, `adapters/*.ts`, `services/DialogManager.ts`, `repositories/*.ts`, `db/index.ts`, `tests/scenarios.test.ts`, `tests/lifecycle.test.ts`, `docs/EXPERIMENTAL_SCHEMA.md`; `Front/frontend/src/App.jsx`, `lib/useCorrelationEngine.js`, `lib/constants.js`, `lib/narrate.js`, `components/*.jsx`, `tests/conformance.mjs`.
 
 ---
+
+## Implementation status (Phase 6)
+
+**All endpoints E1–E14 are implemented.** They live in `backend/src/app.ts`, `backend/src/http/` and `backend/src/runtime/`; the scenario scripts are in `backend/src/scenarios/`.
+
+| Test file | Covers |
+|---|---|
+| `tests/api.test.ts` | E1–E10, E13, E14, the error mapping, §15.1, §15.2 |
+| `tests/scenariosApi.test.ts` | E11, E12, the five scenarios as manual HTTP sequences, 413 |
+| `tests/scenarioRunner.test.ts` | The scenario runner |
+| `tests/runtime.test.ts`, `observedTransport.test.ts`, `eventlog.test.ts`, `queries.test.ts` | The runtime layer |
+
+### Deviations from the design below
+
+| # | Area | Implemented behaviour | Why |
+|---|---|---|---|
+| 1 | E2 `runtime` block | Extra field `uptime_ms` | Convenience; the UI shows uptime |
+| 2 | Request bodies | **Every** body rejects unknown keys with `400` (not only E7). E8 and E10 accept no keys at all | A typo such as `faults` must not be silently ignored |
+| 3 | `request_sent` / `retry_sent` | Emitted by the runtime just **before** the Adapter A call, with the seq predicted as `MAX(seq)+1` under the lock (exact, because the lock is held) | Keeps event order correct: sent, then B's events. Adapter A still writes the `PENDING` row before the transport call |
+| 4 | Event ids | Keep increasing across reset (`clear()`). `truncated` is `true` for a cursor from before a reset | Clients switch on `epoch`; ids never repeat |
+| 5 | Reset | Also refreshes `booted_at` and sets `restart_count` back to 0; clears last scenario results | A reset is a fresh demo |
+| 6 | Reset of a non-`.db` path | Refused with `403 RESET_DISABLED` (explanatory message) rather than a new code | Same outcome for the client: reset not allowed |
+| 7 | Dialog ordering | "Newest first" uses reverse `dialog_id` order (ids are `dlg-<Date.now()>-…`); there is no timestamp column | No schema change. A scenario's `dialogs[]` is ordered by `task_id` (T1, T2) for determinism |
+| 8 | Startup | `create()` emits only `dialog_recovered` events, not `adapter_restarted` | Nothing was restarted |
+| 9 | `TASK_MISMATCH` | Not reachable through any route: Adapter B reports it inside a `200` response (`error_code`). The `TaskMismatchError`-before-`ConflictError` order is proven by a unit test of `toApiError` | Adapter A never receives it as an exception |
+| 10 | Oversized body | `413 PAYLOAD_TOO_LARGE` (body-parser `entity.too.large`, 100 kB default) | Client error, not 500 |
+| 11 | Malformed JSON | `400 VALIDATION_ERROR`, message `Malformed JSON body`, no `details` | — |
+| 12 | Server start | `DB_PATH=:memory:` is refused (exit code 1) | Restart and reset need a file |
+| 13 | E12 ids | Any id that is not 1–5, **including non-numeric** (`abc`, `1.5`), returns `404 SCENARIO_NOT_FOUND` | The resource does not exist |
+| 14 | E12 body | `variant` is accepted only for scenario 5; otherwise `400` | §8 defines variants for scenario 5 only |
+| 15 | Scenario runs | One run holds the runtime lock for its whole duration, using the unlocked ops (`withLock(ops => …)`), including restarts in Scenarios 4–5 | No manual action can interleave; GETs keep working |
+| 16 | Scenario failure | A throwing script returns `200` with `status: "failed"` and `error`; the lock and `running_scenario` are always released; `scenario_finished` is always emitted | The run itself was handled |
+| 17 | `passed` | Requires at least one check, all checks ok, and no exception | An empty script is not a pass |
+| 18 | `last_result` | Kept in memory per scenario. Survives simulated restarts, cleared by reset, lost when the process exits | No durable store (decided) |
+| 19 | `/health` | Reports via `runtime.isOpen()`; `503` once the runtime is closed | Routes only talk to the runtime |
+| 20 | Route modules | `http/routes/{runtime,dialogs,scenarios}.ts`, plus `validation.ts` and `errorMiddleware.ts` | Small and flat |
 
 ## Contents
 
@@ -724,6 +760,19 @@ Ordered; each step should be reviewable on its own and keep the existing 142 tes
 ---
 
 ## 17. Open issues
+
+> **Resolved in Phase 6** (approved decisions):
+> 1. Accepted: full process restart for both targets.
+> 2. Option (a): the runtime pre-checks and maps to `DIALOG_TERMINAL`/`NOT_FOUND`; Adapter A is unchanged.
+> 3. Skipped: no `messageType` on `MessageDroppedError`.
+> 4. Accepted: `duplicates_since_boot` is not durable.
+> 5. Scenarios run on the live DB.
+> 6. Deferred to Phases 7–8.
+> 7. Accepted: no timestamp columns.
+> 8. Deferred to the mentor.
+> 9. Accepted: reset is on by default outside production.
+>
+> The original list follows for reference.
 
 1. **Restart granularity.** With one shared handle, "restart A" and "restart B" are both full process restarts. Every active dialog becomes `restored` and later completes as `RECOVERED`. Accept this (recommended, matches the tests) or fund separate handles per adapter (out of scope today)?
 2. **Adapter A's untyped "not driven" error.** `AdapterA.requireLocalDialog` throws a plain `Error`. After `recover()` this only happens for terminal dialogs, e.g. `complete` or `fail` on a finished dialog, which would surface as `500`. Options: (a) the runtime pre-checks state and maps it to `409 DIALOG_TERMINAL` (no backend change; recommended), or (b) introduce a typed `DialogNotDrivenError` in `AdapterA` (an error-class change, no semantic change).

@@ -5,11 +5,11 @@
 
 > A prototype that connects two mock agent adapters and shows how explicit dialog IDs, lifecycle states, request deduplication, and durable state let a task survive a disconnect or restart without losing its identity or repeating side effects that were already durably recorded.
 
-> **Status (Phase 4, 2026-10-08).**
+> **Status (Phase 6, 2026-10-08).**
 >
-> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection. The five disconnect/retry scenarios are automated tests; the full backend suite is 142 passing tests ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md).
+> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md).
 >
-> **Not yet implemented:** any HTTP API beyond `GET /health`; connecting the React frontend to the backend (the frontend is still a standalone browser simulation); the live demonstration; the final deliverables (PDF, repository hand-over).
+> **Not yet implemented:** connecting the React frontend to the backend (the frontend is still a standalone browser simulation); the live demonstration; the final deliverables (PDF, repository hand-over).
 >
 > Sections labelled **Requirement** come from the official Problem Statement. Sections marked **Pending** describe work that has not been done yet.
 
@@ -330,7 +330,7 @@ Notes:
 
 - **Shared store.** There is one database, not one per adapter. Adapter A creates the dialog row and Adapter B correlates against it.
 - **Fixed roles.** Adapter A only sends and Adapter B only receives. The transport delivers A → B only.
-- **HTTP.** An Express app exists, but its only route is `GET /health`. The adapters are not reachable over HTTP yet.
+- **HTTP.** An Express app exposes the runtime that hosts both adapters (`backend/src/runtime/SimulationRuntime.ts`); routes never touch the adapters or the database directly ([Section 19](#19-api--message-format)).
 
 ---
 
@@ -691,11 +691,30 @@ payload     (mock business payload, stored in Adapter A's send log)
 
 ## 19. API / Message Format
 
-> **Communication between the adapters is in-process.** Messages are TypeScript objects passed through `Transport`; there is no network encoding. No MCP or A2A endpoint exists. Over HTTP, only `GET /health` exists (an adapter/dialog API is planned for Phases 5–6).
+> **Communication between the adapters is in-process.** Messages are TypeScript objects passed through `Transport`; there is no network encoding. No MCP or A2A endpoint exists.
 
 Types: `backend/src/adapters/types.ts`. Full field tables: [`docs/EXPERIMENTAL_SCHEMA.md` §4](docs/EXPERIMENTAL_SCHEMA.md).
 
-HTTP API: designed in Phase 5, not yet implemented — see [`docs/API_DESIGN.md`](docs/API_DESIGN.md).
+### HTTP API (implemented, Phase 6)
+
+The HTTP API controls the runtime that hosts both adapters. Full contract, outcome model and error codes: [`docs/API_DESIGN.md`](docs/API_DESIGN.md).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness |
+| GET | `/api/state` | Snapshot: dialogs, metrics, node status, runtime info |
+| GET | `/api/dialogs`, `/api/dialogs/:dialogId` | Dialog summaries / one dialog with processed requests, send log, per-seq ledger |
+| POST | `/api/dialogs` | Start a dialog for a `task_id` |
+| POST | `/api/dialogs/:dialogId/requests` | Send the next request (optional `fault`: `drop_request` \| `drop_response`) |
+| POST | `/api/dialogs/:dialogId/requests/:seq/retry` | Retry a seq with its stored payload |
+| POST | `/api/dialogs/:dialogId/complete` / `fail` | → `COMMITTED`/`RECOVERED` / → `FAILED` |
+| POST | `/api/adapters/:adapter/restart` | `A` or `B`: full process restart from the SQLite file + `recover()` |
+| GET | `/api/scenarios` | The five scenarios and the last result of each |
+| POST | `/api/scenarios/:id/run` | Run a scenario on the live runtime |
+| GET | `/api/events?since=` | Activity events after a cursor (polling) |
+| POST | `/api/reset` | Demo-only wipe, body `{"confirm":"RESET"}` |
+
+Simulated drops are reported as `200` with `delivery`/`outcome` fields, not as HTTP errors. Errors share one shape: `{ error, message, status, details? }`.
 
 ### Request message (`AdapterRequest`)
 
@@ -741,7 +760,7 @@ HTTP API: designed in Phase 5, not yet implemented — see [`docs/API_DESIGN.md`
 | `INTERNAL` | Any other failure |
 
 ### Retry behavior
-Retries reuse the same `dialog_id`, `task_id`, `seq` and payload. There is no timer or backoff: retries are issued explicitly by the caller (tests, later the API). After `maxAttempts` (default 5) unanswered attempts of a `PENDING` request, the dialog becomes `FAILED`.
+Retries reuse the same `dialog_id`, `task_id`, `seq` and payload. There is no timer or backoff: retries are issued explicitly by the caller (tests, or `POST …/requests/:seq/retry`). After `maxAttempts` (default 5) unanswered attempts of a `PENDING` request, the dialog becomes `FAILED`.
 
 ---
 
@@ -801,7 +820,7 @@ Known gap: the window between `run_side_effect` and `requests.insert`. See [Sect
 | Area | Choice | Why |
 |---|---|---|
 | Language / runtime | Node.js + TypeScript (strict) | Typed schema and state machine; same runtime as the frontend tooling |
-| HTTP framework | Express 4 | Simple; currently serves `GET /health` only |
+| HTTP framework | Express 4 | Simple; serves the API in `backend/src/http/` |
 | Durable storage | SQLite file via **sql.js** 1.12 (WebAssembly) | Embedded, file-based, survives restarts, no server. A native driver (better-sqlite3) was not used because it needs a C++ build toolchain that is not available on the development machine. |
 | Validation | zod | Runtime schemas for the record types (API boundaries later) |
 | Transport between adapters | In-process `Transport` class | Deterministic fault injection; not a real MCP/A2A transport |
@@ -825,7 +844,7 @@ Nighthawks/
 │   ├── vitest.config.ts
 │   ├── src/
 │   │   ├── server.ts              # entry point: opens DB, starts Express
-│   │   ├── app.ts                 # Express app (GET /health)
+│   │   ├── app.ts                 # Express app: /health + /api routes
 │   │   ├── config/index.ts        # PORT, DB_PATH, LOG_LEVEL
 │   │   ├── logger.ts              # JSON-line logger
 │   │   ├── errors.ts              # AppError and subclasses
@@ -836,18 +855,24 @@ Nighthawks/
 │   │   ├── repositories/          # Dialog, Request, OutboundRequest repositories
 │   │   ├── services/
 │   │   │   └── DialogManager.ts   # correlation + lifecycle
+│   │   ├── runtime/               # SimulationRuntime, EventLog, ObservedTransport
+│   │   ├── http/                  # routes, zod validation, error mapping
+│   │   ├── scenarios/             # the five scenario scripts + runner
 │   │   └── adapters/
 │   │       ├── AdapterA.ts
 │   │       ├── AdapterB.ts
 │   │       ├── Transport.ts
 │   │       └── types.ts           # AdapterRequest / AdapterResponse
 │   └── tests/
-│       ├── scenarios.test.ts      # the five scenarios
+│       ├── scenarios.test.ts      # the five scenarios (adapter level)
+│       ├── scenarioRunner.test.ts # the five scenarios on the live runtime
+│       ├── scenariosApi.test.ts   # E11/E12 + the five scenarios as HTTP calls
+│       ├── api.test.ts            # every other endpoint, error mapping
+│       ├── runtime.test.ts        # SimulationRuntime
 │       ├── lifecycle.test.ts      # completion, failure, terminal guards
 │       ├── recovery.test.ts       # send log + recover()
-│       ├── adapters.test.ts
-│       ├── DialogManager.test.ts
-│       ├── storage.test.ts
+│       ├── adapters.test.ts, DialogManager.test.ts, storage.test.ts
+│       ├── observedTransport.test.ts, eventlog.test.ts, queries.test.ts
 │       └── health.test.ts
 └── Front/
     └── frontend/                  # standalone React simulation (not wired to backend)
@@ -900,16 +925,34 @@ Storage initialization is automatic: the schema is applied (`CREATE TABLE IF NOT
 
 ## 24. Running the Prototype
 
-**Running the five scenarios today = running the backend test suite** ([Section 25](#25-running-tests)). The adapters are not yet exposed through an API.
-
-Backend health server (development, auto-reload):
+Backend API server (development, auto-reload):
 
 ```bash
 cd backend
 npm run dev
 ```
 
-Then `GET http://localhost:3001/health` returns `{"status":"ok", ...}`. The server opens `dialogs.db` in the working directory.
+It listens on `PORT` (default `3001`) and uses the SQLite file `DB_PATH` (default `dialogs.db` in the working directory; `:memory:` is refused). Compiled alternative: `npm run build` then `npm start`.
+
+Examples (from another terminal; replace `<dialog_id>` with the id returned by the first call):
+
+```bash
+curl -s -X POST localhost:3001/api/dialogs -H 'content-type: application/json' -d '{"task_id":"task-demo-1"}'
+```
+
+```bash
+curl -s -X POST localhost:3001/api/dialogs/<dialog_id>/requests -H 'content-type: application/json' -d '{"payload":{"op":"charge"},"fault":"drop_response"}'
+```
+
+```bash
+curl -s -X POST localhost:3001/api/dialogs/<dialog_id>/requests/1/retry -H 'content-type: application/json' -d '{}'
+```
+
+```bash
+curl -s -X POST localhost:3001/api/scenarios/4/run -H 'content-type: application/json' -d '{}'
+```
+
+The retry returns `"outcome":"duplicate"`; the scenario run returns its steps, checks and final states.
 
 Frontend simulation (does **not** talk to the backend):
 
@@ -918,7 +961,7 @@ cd Front/frontend
 npm run dev
 ```
 
-Open the URL Vite prints (default `http://localhost:5173`). The scenario buttons run the browser-side simulation only.
+Open the URL Vite prints (default `http://localhost:5173`). The scenario buttons still run the browser-side simulation only; wiring the UI to the API is Phase 7.
 
 ---
 
@@ -928,8 +971,12 @@ Backend (from `backend/`):
 
 | Group | Command | Expected |
 |---|---|---|
-| All tests | `npm test` | 7 files, 142 tests pass |
-| Five disconnect/retry scenarios | `npx vitest run tests/scenarios.test.ts` | 8 tests pass |
+| All tests | `npm test` | 14 files, 265 tests pass |
+| Five scenarios, adapter level | `npx vitest run tests/scenarios.test.ts` | 8 tests pass |
+| Five scenarios on the live runtime | `npx vitest run tests/scenarioRunner.test.ts` | 13 tests pass |
+| Five scenarios via HTTP + E11/E12 | `npx vitest run tests/scenariosApi.test.ts` | 19 tests pass |
+| HTTP API (all other endpoints, errors) | `npx vitest run tests/api.test.ts` | 41 tests pass |
+| Runtime / events / transport | `npx vitest run tests/runtime.test.ts tests/eventlog.test.ts tests/observedTransport.test.ts` | 26 + 8 + 11 pass |
 | Lifecycle / terminal guards | `npx vitest run tests/lifecycle.test.ts` | 30 tests pass |
 | Recovery (send log, `recover()`) | `npx vitest run tests/recovery.test.ts` | 18 tests pass |
 | Deduplication / adapters | `npx vitest run tests/adapters.test.ts` | 29 tests pass |
@@ -941,7 +988,7 @@ Frontend (from `Front/frontend/`): `npm test` runs `tests/conformance.mjs`, a he
 
 ## 26. Demonstration Guide
 
-> **Pending (Phase 10).** The live demo needs the API (Phases 5–6) and the frontend connected to the backend (Phase 7). Outline only:
+> **Pending (Phase 10).** The API exists; the live demo still needs the frontend connected to it (Phase 7). Outline only:
 
 1. Start the backend; open the dashboard.
 2. Create a task/dialog; show `dialog_id`, `task_id`, `INITIATED`.
@@ -951,7 +998,7 @@ Frontend (from `Front/frontend/`): `npm test` runs `tests/conformance.mjs`, a he
 6. Complete the task; show `RECOVERED`.
 7. Show the pseudocode ([Section 20](#20-pseudocode)) and the test results ([Section 28](#28-results)).
 
-Until then, the scenarios can be shown by running `npx vitest run tests/scenarios.test.ts --reporter=verbose`.
+Until then, the scenarios can be shown with `npx vitest run tests/scenarios.test.ts --reporter=verbose` or by calling `POST /api/scenarios/:id/run` ([Section 24](#24-running-the-prototype)).
 
 ---
 
@@ -973,7 +1020,7 @@ Until then, the scenarios can be shown by running `npx vitest run tests/scenario
 
 ## 28. Results
 
-Run on **2026-10-08** with `npx vitest run` in `backend/` (Vitest 1.6.0, Node.js v24.14.1): **7 test files, 142 tests, all passed.**
+Run on **2026-10-08** with `npx vitest run` in `backend/` (Vitest 1.6.0, Node.js v24.14.1): **14 test files, 265 tests, all passed.**
 
 | Scenario | Disconnect | Retry / restart | Correlation | Recovery | Deduplication | Result |
 |---|---|---|---|---|---|---|
@@ -984,7 +1031,13 @@ Run on **2026-10-08** with `npx vitest run` in `backend/` (Vitest 1.6.0, Node.js
 | 5. Mid-Task Disconnect + Adapter A Restart → Resume, response-lost | Response dropped + restart | `recover()`, retry 3 and 1, send 4 | Same IDs, no new dialog | nextSeq 4, pending [3] | 3 and 1 `duplicate`, 4 once | **Pass** — `RECOVERED` |
 | 5. … request-lost | Request dropped + restart | `recover()`, retry 3, send 4 | Same IDs | nextSeq 4, pending [3] | 3 once (first arrival), 4 once | **Pass** — `RECOVERED` |
 
-Per-file counts: `scenarios` 8, `lifecycle` 30, `recovery` 18, `adapters` 29, `DialogManager` 38, `storage` 17, `health` 2.
+Per-file counts: `scenarios` 8, `scenarioRunner` 13, `scenariosApi` 19, `api` 41, `runtime` 26, `lifecycle` 30, `recovery` 18, `adapters` 29, `DialogManager` 38, `storage` 17, `observedTransport` 11, `eventlog` 8, `queries` 5, `health` 2.
+
+**Via HTTP.** The same five scenarios (Scenario 5 in both variants) also pass through the API, in two ways:
+- as scripted runs, `POST /api/scenarios/:id/run` (`tests/scenariosApi.test.ts`, `tests/scenarioRunner.test.ts`);
+- as manual call sequences using only the dialog, request, retry, complete and restart endpoints (`tests/scenariosApi.test.ts`).
+
+A run of the compiled server returned `passed` for all five, with Scenario 1 ending `INITIATED` + `COMMITTED`, Scenarios 2–3 `COMMITTED`, and Scenarios 4–5 `RECOVERED`.
 
 **Interoperability.** The PS lists "Interoperability and recovery test results". Only **recovery** results are claimed here. Both adapters are written by the same team in the same codebase against one schema; **no interoperability between independently implemented adapters, and none with MCP or A2A, is claimed or tested.** What the mentor expects under "interoperability" should be clarified.
 
@@ -998,11 +1051,12 @@ Per-file counts: `scenarios` 8, `lifecycle` 30, `recovery` 18, `adapters` 29, `D
 | R2: One defined dialog-state schema | `dialogs`, `requests`, `outbound_requests`; record types | `backend/src/db/schema.sql`, `backend/src/types/index.ts`, `docs/EXPERIMENTAL_SCHEMA.md`; `tests/storage.test.ts` |
 | R3: Task identity preserved across restarts | `dialog_id`/`task_id` in the file; `recover()`; `task_id` checked on every request | Scenarios 4 and 5; `tests/recovery.test.ts`; "Terminal states survive restart" in `tests/lifecycle.test.ts` |
 | R4: Request deduplication | `(dialog_id, seq)` primary key in `requests`; stored result returned | Scenario 3; `tests/adapters.test.ts` Tests 7, 8, 12; replay on finished dialogs in `tests/lifecycle.test.ts` |
-| R5: Five disconnect/retry scenarios | `tests/scenarios.test.ts` | [Section 28](#28-results) |
+| R5: Five disconnect/retry scenarios | `tests/scenarios.test.ts`; scripts in `backend/src/scenarios/`, runnable via `POST /api/scenarios/:id/run` | [Section 28](#28-results); `tests/scenarioRunner.test.ts`, `tests/scenariosApi.test.ts` |
 | R6: Explicit lifecycle states and valid transitions | `LIFECYCLE_STATES`, `VALID_TRANSITIONS`, `DialogManager.transition`; triggers in the adapters | `tests/DialogManager.test.ts`; `tests/lifecycle.test.ts` |
 | R7: Mentor-selected pinned or clearly labelled experimental schema | Clearly labelled experimental schema `v0.1-experimental` (no mentor draft pinned) | `docs/EXPERIMENTAL_SCHEMA.md` |
 | R8: No overclaiming (IETF, MCP/A2A, exactly-once) | Non-claims in Sections 11, 28, 30, 31, 33 and the schema doc; frontend wording no longer says "exactly once" | This README; `docs/EXPERIMENTAL_SCHEMA.md` §9 |
-| Demo: identity preservation and duplicate rejection | Shown by the scenario tests today | Live demo pending (Phase 10) |
+| HTTP API controlling the adapters (project goal for the demo) | `backend/src/http/`, `backend/src/runtime/` | `tests/api.test.ts`, `tests/scenariosApi.test.ts`, `docs/API_DESIGN.md` |
+| Demo: identity preservation and duplicate rejection | Shown by the scenario tests and the API today | Live demo pending (Phase 10) |
 | Deliverable: private repo, collaborator, ownership transfer, team-named repo | [Section 42](#42-hackathon-deliverables-checklist) | Pending (Phase 11) |
 | Deliverable: PDF per *Proposed-structure-hackathon.pdf* | [Section 42](#42-hackathon-deliverables-checklist) | Pending (Phase 11) |
 | Deliverable: demo with pseudocode snippet | [Section 20](#20-pseudocode), [Section 26](#26-demonstration-guide) | Pseudocode written; demo pending |
@@ -1061,7 +1115,7 @@ This prototype uses **two mock adapters** to study that problem in a controlled 
 - **In-memory side-effect counter:** `InMemorySideEffectTracker` resets on restart; tests use it to show nothing was re-run.
 - **Non-atomic persistence:** `persistToDisk` overwrites the file in place (`fs.writeFileSync`); a crash during the write could corrupt the database.
 - **Retry-budget accounting:** `attempts` also counts attempts that got an `error` reply, so a request can reach `maxAttempts` with fewer dropped messages.
-- **No API yet:** only `GET /health`; the adapters are driven by the tests.
+- **API is local and unauthenticated:** one runtime, one lock; a mutation during a scenario run gets `409 RUNTIME_BUSY`; activity events are in memory only (lost when the server exits).
 - **Frontend is a standalone simulation** with its own 6-state model (including `WAITING_ACK`), reorder buffer and NACK logic; its "database" is an in-browser JavaScript `Map`, not the backend's SQLite file.
 - It does **not** implement MCP or A2A, and does not claim interoperability with them.
 - It does **not** implement a finalized IETF standard. The schema is experimental.
