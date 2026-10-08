@@ -695,6 +695,8 @@ payload     (mock business payload, stored in Adapter A's send log)
 
 Types: `backend/src/adapters/types.ts`. Full field tables: [`docs/EXPERIMENTAL_SCHEMA.md` §4](docs/EXPERIMENTAL_SCHEMA.md).
 
+HTTP API: designed in Phase 5, not yet implemented — see [`docs/API_DESIGN.md`](docs/API_DESIGN.md).
+
 ### Request message (`AdapterRequest`)
 
 ```json
