@@ -2,9 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { ENGINE, useEngine } from './api/engine.js';
 import { SCENARIOS } from './lib/constants.js';
 import { Pill } from './components/ui/Glass.jsx';
+import { TONE_CLASSES } from './components/ui/tokens.js';
 import Header from './components/Header.jsx';
 import MetricBar from './components/MetricBar.jsx';
 import PipelineVisualizer from './components/PipelineVisualizer.jsx';
+import ManualControls from './components/ManualControls.jsx';
 import ScenarioHub from './components/ScenarioHub.jsx';
 import TaskList from './components/TaskList.jsx';
 import ActivityFeed from './components/ActivityFeed.jsx';
@@ -21,6 +23,7 @@ export default function App() {
   const [selectedDialogId, setSelectedDialogId] = useState('');
 
   const running = Boolean(engine.simulation.running);
+  const backendMode = ENGINE === 'backend';
 
   /**
    * The headline connection state. The network channel and the sender are the
@@ -71,6 +74,18 @@ export default function App() {
           )}
         </div>
 
+        {engine.banner ? (
+          <div
+            role="alert"
+            className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-[13px] text-slate-100 ${TONE_CLASSES[engine.banner.tone]?.border ?? ''} ${TONE_CLASSES[engine.banner.tone]?.bg ?? ''}`}
+          >
+            <span className="flex-1">{engine.banner.text}</span>
+            <button type="button" className="btn-subtle px-2.5 py-1" onClick={engine.dismissBanner} aria-label="Dismiss this message">
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
         <MetricBar metrics={engine.metrics} nodes={engine.nodes} />
 
         <PipelineVisualizer
@@ -81,7 +96,17 @@ export default function App() {
           dialogs={engine.dialogs}
           dispatch={engine.dispatch}
           clearBlackholes={engine.clearBlackholes}
-          manualEnabled={ENGINE === 'sim'}
+          backendMode={backendMode}
+          manualPanel={backendMode ? (
+            <ManualControls
+              actions={engine.actions}
+              dialogs={engine.dialogs}
+              selectedId={selectedDialogId}
+              onSelect={setSelectedDialogId}
+              busy={engine.busy || running}
+              connected={engine.connected}
+            />
+          ) : null}
           highlightedTone={activeScenario ? { emerald: 'good', amber: 'warn', sky: 'info', violet: 'duplicate', orange: 'warn' }[activeScenario.tone] : null}
         />
 

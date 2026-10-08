@@ -42,6 +42,104 @@ function windowList(window) {
   return `packets ${window[0]} to ${window[window.length - 1]}`;
 }
 
+/* ---- backend-only rules (Phase 7b) -------------------------------------
+ * Entries produced from backend events by src/api/mappers.js carry
+ * origin: 'backend' and meta.event_type.  These rules match ONLY those entries,
+ * so narration of the browser simulation is untouched.
+ */
+const isBackend = (type) => (entry) => entry.origin === 'backend' && entry.meta?.event_type === type;
+
+const REFUSAL = {
+  DIALOG_TERMINAL: 'the task is already finished, so new work is refused',
+  TASK_MISMATCH: 'it names a different task than the one on record',
+  DIALOG_NOT_FOUND: 'the Receiver Agent does not know this task',
+};
+
+const BACKEND_RULES = [
+  {
+    when: isBackend('request_dropped'),
+    tone: TONE.bad,
+    Icon: 'x',
+    headline: (entry) => `Packet ${seqOf(entry)} was lost before reaching the Receiver Agent`,
+    detail: () => 'No work was done. The Sender Agent can retry it with the same packet number.',
+  },
+  {
+    when: isBackend('retry_sent'),
+    tone: TONE.warn,
+    Icon: 'rotate',
+    headline: (entry) => `Retrying packet ${seqOf(entry)} (attempt ${entry.meta?.attempts ?? '?'})`,
+    detail: () => 'Same task, same packet number, same contents — so the Receiver Agent can tell if it already did this work.',
+  },
+  {
+    when: isBackend('response_dropped'),
+    tone: TONE.warn,
+    Icon: 'x',
+    headline: (entry) => `Reply for packet ${seqOf(entry)} was lost on the way back — the work WAS done`,
+    detail: () => 'The Receiver Agent did the work and saved that fact. The Sender Agent never heard back, so it should retry; the retry will be recognised as a duplicate.',
+  },
+  {
+    when: isBackend('response_delivered'),
+    tone: TONE.info,
+    Icon: 'check',
+    headline: (entry) => `Reply for packet ${seqOf(entry)} reached the Sender Agent`,
+    detail: (entry) => {
+      const status = entry.meta?.status ?? entry.meta?.outcome;
+      if (status === 'duplicate') return 'The Receiver Agent answered with the result it had stored the first time.';
+      if (status === 'error') return 'The answer was a refusal — no work was done.';
+      return 'The work is done and the answer arrived.';
+    },
+  },
+  {
+    when: isBackend('request_rejected'),
+    tone: TONE.bad,
+    Icon: 'shield',
+    headline: (entry) => `Packet ${seqOf(entry)} refused — ${REFUSAL[entry.meta?.error_code] ?? 'the Receiver Agent rejected it'}`,
+    detail: () => 'No work was done.',
+  },
+  {
+    when: isBackend('request_acked'),
+    tone: TONE.good,
+    Icon: 'check',
+    headline: (entry) => `Packet ${seqOf(entry)} confirmed`,
+    detail: () => 'The Sender Agent now knows this work is done and will not need to send it again.',
+  },
+  {
+    when: (entry) => isBackend('adapter_restarted')(entry) && entry.meta?.phase !== 'end',
+    tone: TONE.warn,
+    Icon: 'rotate',
+    headline: (entry) => `Restarting the whole backend process (Adapter ${entry.meta?.target ?? '?'} was asked to restart)`,
+    detail: () => 'Both agents share one database file, so both are rebuilt from it. Anything held only in memory is gone; everything saved survives.',
+  },
+  {
+    when: isBackend('adapter_restarted'),
+    tone: TONE.good,
+    Icon: 'recover',
+    headline: () => 'Backend process restarted — both agents reloaded from the saved database',
+    detail: () => 'Unfinished tasks are reloaded next, with the same task ids.',
+  },
+  {
+    when: isBackend('runtime_reset'),
+    tone: TONE.info,
+    Icon: 'rotate',
+    headline: () => 'Demo data wiped — starting fresh',
+    detail: () => 'The backend deleted its database file and started a new session.',
+  },
+  {
+    when: isBackend('scenario_started'),
+    tone: TONE.info,
+    Icon: 'sparkles',
+    headline: (entry) => `Demo ${entry.meta?.scenario_id} started`,
+    detail: (entry) => entry.meta?.title ?? null,
+  },
+  {
+    when: isBackend('scenario_finished'),
+    tone: (entry) => (entry.meta?.status === 'passed' ? TONE.good : TONE.bad),
+    Icon: 'check',
+    headline: (entry) => `Demo ${entry.meta?.scenario_id} ${entry.meta?.status === 'passed' ? 'passed' : 'failed'}`,
+    detail: (entry) => (entry.meta?.error ? `Error: ${entry.meta.error}` : entry.meta?.duration_ms !== undefined ? `Took ${entry.meta.duration_ms}ms.` : null),
+  },
+];
+
 const RULES = [
   /* ---- packets getting lost ------------------------------------------ */
   {
@@ -244,7 +342,7 @@ const RULES = [
  * @returns {{tone: string, Icon: string, headline: string, detail: string|null, source: string}}
  */
 export function narrate(entry) {
-  for (const rule of RULES) {
+  for (const rule of entry?.origin === 'backend' ? [...BACKEND_RULES, ...RULES] : RULES) {
     let matched = false;
     try {
       matched = rule.when(entry);
@@ -290,8 +388,8 @@ export function narrate(entry) {
 export function describeTask(dialog) {
   const count = dialog.sideEffects;
   if (dialog.state === 'FAILED') {
-    const lost = dialog.missing?.length ? `packet${dialog.missing.length > 1 ? 's' : ''} ${dialog.missing.join(', ')}` : 'a packet';
-    return `Could not finish — ${lost} never arrived`;
+    if (!dialog.missing?.length) return 'Stopped before finishing — the retry limit was reached or it was aborted';
+    return `Could not finish — packet${dialog.missing.length > 1 ? 's' : ''} ${dialog.missing.join(', ')} never arrived`;
   }
   if (dialog.state === 'COMMITTED') return `All ${count} work items completed, none repeated`;
   if (dialog.state === 'RECOVERED') return `Finished after a crash — ${count} work items, none repeated`;

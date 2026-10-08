@@ -50,6 +50,11 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
+    // The backend always answers errors with a JSON ApiError body.  A 5xx without
+    // one comes from the Vite dev proxy when the backend is down: unreachable.
+    if (payload === null && res.status >= 500) {
+      throw new ApiClientError({ status: 0, code: 'NETWORK', message: `Backend unreachable (proxy answered HTTP ${res.status})` });
+    }
     throw new ApiClientError({
       status: res.status,
       code: payload?.error ?? (res.status >= 500 ? 'INTERNAL_SERVER_ERROR' : 'HTTP_ERROR'),

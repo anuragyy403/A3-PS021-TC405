@@ -19,7 +19,7 @@ function PacketStrip({ ledger }) {
   const STYLE = {
     applied: { cls: 'bg-emerald-400', label: 'processed' },
     buffered: { cls: 'bg-amber-400', label: 'held, waiting for an earlier packet' },
-    missing: { cls: 'bg-rose-400', label: 'lost, being requested again' },
+    missing: { cls: 'bg-rose-400', label: 'sent, not processed yet' },
     pending: { cls: 'bg-slate-700', label: 'not sent yet' },
   };
 

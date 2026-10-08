@@ -61,7 +61,7 @@ export const STATE_PLAIN = {
   WAITING_ACK: { label: 'Waiting for confirmation', hint: 'All work is done, waiting for the receiver to confirm.' },
   COMMITTED: { label: 'Completed', hint: 'Every packet was applied; retried duplicates were not applied again.' },
   RECOVERED: { label: 'Recovered', hint: 'The sender crashed, then finished the task from saved state.' },
-  FAILED: { label: 'Failed', hint: 'A packet never arrived, so the task could not be completed.' },
+  FAILED: { label: 'Failed', hint: 'The task stopped before finishing — the retry limit was reached or it was aborted.' },
 };
 
 /** Colour for each lifecycle state, expressed as plain Tailwind tokens. */

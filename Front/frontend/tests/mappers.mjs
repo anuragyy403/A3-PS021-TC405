@@ -31,6 +31,7 @@ import {
   mapScenarioResults,
   mapState,
   noticeLog,
+  recoveryCounts,
   resolveEventPage,
   scenarioRunIdFromEvents,
 } from '../src/api/mappers.js';
@@ -124,6 +125,29 @@ test('metrics: fields with no backend source are zero/null, never invented', () 
   assert.equal(mapped.avgLatencyMs, null);
   assert.deepEqual(mapMetrics(undefined), emptyMetrics());
   assert.equal(emptyMetrics().recoveryRate, null);   // MetricBar shows its "100%" empty state
+});
+
+test('metrics: recovery counts only restored tasks that have finished; open ones are separate', () => {
+  const counts = recoveryCounts(state.metrics, state.dialogs);
+  const restored = state.dialogs.filter((d) => d.restored);
+  assert.equal(counts.attempted + counts.open, restored.length);
+  assert.equal(counts.attempted, restored.filter((d) => d.terminal).length);
+  assert.equal(counts.succeeded, restored.filter((d) => d.state === 'RECOVERED').length);
+  assert.ok(counts.open >= 1, 'fixture has restored tasks still open');
+  const mapped = mapState(state).metrics;
+  assert.equal(mapped.recoveryAttempted, counts.attempted);
+  assert.equal(mapped.recoverySucceeded, counts.succeeded);
+  assert.equal(mapped.restoredOpen, counts.open);
+  assert.equal(mapped.recoveryRate, counts.attempted ? (counts.succeeded / counts.attempted) * 100 : null);
+  assert.equal(mapped.inProgress, state.metrics.by_state.PROCESSING);
+  assert.equal(mapped.notStarted, state.metrics.by_state.INITIATED);
+  const synthetic = recoveryCounts({}, [
+    { restored: true, terminal: true, state: 'RECOVERED' },
+    { restored: true, terminal: true, state: 'FAILED' },
+    { restored: true, terminal: false, state: 'INITIATED' },
+    { restored: false, terminal: true, state: 'COMMITTED' },
+  ]);
+  assert.deepEqual(synthetic, { attempted: 2, succeeded: 1, open: 1 });
 });
 
 test('metrics: recovery rate is null when nothing was restored', () => {
@@ -285,23 +309,75 @@ test('logs: narration of mapped events is accurate', () => {
   assert.equal(mapEventToLog(fail).kind, 'error');
 });
 
+test('logs: backend entries carry origin "backend"; UI notices "dashboard"', () => {
+  for (const e of events) {
+    const entry = mapEventToLog(e);
+    if (entry) assert.equal(entry.origin, 'backend');
+  }
+  assert.equal(noticeLog('error', 'x').origin, 'dashboard');
+});
+
 test('logs: restarts are narrated as a full process restart, never "Sender Agent" only', () => {
-  for (const e of events.filter((x) => x.type === 'adapter_restarted')) {
+  const restarts = events.filter((x) => x.type === 'adapter_restarted');
+  assert.ok(restarts.length >= 2);
+  for (const e of restarts) {
     const entry = mapEventToLog(e);
     assert.match(entry.msg, /scope process/);
-    assert.match(entry.msg, /both adapter/);
     const spoken = narrate(entry);
-    assert.equal(spoken.headline, entry.msg, 'must fall through to the verbatim message');
     assert.doesNotMatch(spoken.headline, /Sender Agent/);
+    if (e.details.phase === 'end') {
+      assert.equal(spoken.headline, 'Backend process restarted — both agents reloaded from the saved database');
+    } else {
+      assert.equal(spoken.headline, `Restarting the whole backend process (Adapter ${e.details.target} was asked to restart)`);
+      assert.match(spoken.detail, /share one database file/);
+    }
   }
 });
 
-test('logs: response_dropped / rejected / retry fall through to their verbatim message', () => {
-  for (const type of ['response_dropped', 'request_rejected', 'retry_sent', 'request_acked', 'response_delivered']) {
-    const entry = mapEventToLog(first(type));
-    assert.equal(narrate(entry).headline, entry.msg, type);
+test('logs: backend narration for retry, replies, refusals, acks, reset, demos', () => {
+  const retry = first('retry_sent');
+  assert.equal(narrate(mapEventToLog(retry)).headline, `Retrying packet ${retry.seq} (attempt ${retry.details.attempts})`);
+
+  const lostReply = first('response_dropped');
+  const r = narrate(mapEventToLog(lostReply));
+  assert.equal(r.headline, `Reply for packet ${lostReply.seq} was lost on the way back — the work WAS done`);
+  assert.equal(r.tone, 'warn');
+
+  const delivered = first('response_delivered', (e) => e.details.status === 'duplicate');
+  assert.match(narrate(mapEventToLog(delivered)).detail, /stored the first time/);
+
+  const refused = first('request_rejected');
+  assert.equal(refused.details.error_code, 'DIALOG_TERMINAL');
+  assert.equal(narrate(mapEventToLog(refused)).headline, `Packet ${refused.seq} refused — the task is already finished, so new work is refused`);
+  assert.equal(narrate(mapEventToLog({ ...refused, details: { error_code: 'TASK_MISMATCH' } })).headline,
+    `Packet ${refused.seq} refused — it names a different task than the one on record`);
+
+  const acked = first('request_acked');
+  assert.equal(narrate(mapEventToLog(acked)).headline, `Packet ${acked.seq} confirmed`);
+
+  const lostReq = first('request_dropped');
+  assert.equal(narrate(mapEventToLog(lostReq)).headline, `Packet ${lostReq.seq} was lost before reaching the Receiver Agent`);
+
+  assert.equal(narrate(mapEventToLog(first('runtime_reset'))).headline, 'Demo data wiped — starting fresh');
+  const started = first('scenario_started');
+  assert.equal(narrate(mapEventToLog(started)).headline, `Demo ${started.details.scenario_id} started`);
+  const finished = first('scenario_finished');
+  assert.equal(narrate(mapEventToLog(finished)).headline, `Demo ${finished.details.scenario_id} passed`);
+});
+
+test('narration: backend-only rules never fire for entries without origin (the simulation)', () => {
+  for (const e of events) {
+    const entry = mapEventToLog(e);
+    if (!entry) continue;
+    const { origin, ...simShaped } = entry;
+    assert.equal(origin, 'backend');
+    const sim = narrate(simShaped);
+    const backend = narrate(entry);
+    const typedRule = ['retry_sent', 'response_dropped', 'response_delivered', 'request_rejected', 'request_acked',
+      'adapter_restarted', 'runtime_reset', 'scenario_started', 'scenario_finished', 'request_dropped'].includes(e.type);
+    if (!typedRule) assert.deepEqual(sim, backend, `${e.type} narration must not depend on origin`);
+    else if (e.type !== 'request_dropped') assert.equal(sim.headline, entry.msg, `${e.type}: without origin it falls back to the message`);
   }
-  assert.match(mapEventToLog(first('request_rejected')).msg, /DIALOG_TERMINAL/);
 });
 
 test('logs: unknown and malformed events never crash', () => {

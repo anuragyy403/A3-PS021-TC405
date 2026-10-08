@@ -17,6 +17,7 @@ import {
   noticeLog,
   resolveEventPage,
 } from './mappers.js';
+import { dialogMessage, errorMessage, outcomeMessage, restartMessage } from './messages.js';
 
 /**
  * Backend-driven engine (Phase 7a).
@@ -24,19 +25,27 @@ import {
  * Returns the same object contract as useCorrelationEngine(), but every value
  * comes from the backend API (docs/API_DESIGN.md).  The browser holds no
  * authoritative state: it polls
- *   GET /api/events?since=<cursor>   every EVENTS_MS while the tab is visible
- *   GET /api/state                   after new events, and at least every STATE_MAX_AGE_MS
+ *   GET /api/events?since=<cursor>   every timing.eventsMs while the tab is visible
+ *   GET /api/state                   after new events, and at least every timing.stateMaxAgeMs
  *   GET /api/dialogs/:id             only for dialogs touched by new events (ledgers)
  *   GET /api/scenarios               on load, after a scenario finishes, after a reset
+ *
+ * Phase 7b adds the manual actions (one API call each, never automatic), a
+ * `busy` flag for disabling controls, and a dismissible error banner.
  */
 
-const EVENTS_MS = 400;
-const HIDDEN_MS = 1500;
-const STATE_MAX_AGE_MS = 2000;
-const MAX_BACKOFF_MS = 5000;
+/** Default timings (ms).  Tests pass shorter ones via useBackendEngine({ timing }). */
+export const DEFAULT_TIMING = Object.freeze({
+  eventsMs: 400,               // poll interval while visible
+  hiddenMs: 1500,              // idle re-check interval while the tab is hidden (no requests)
+  stateMaxAgeMs: 2000,         // refresh /api/state at least this often
+  maxBackoffMs: 5000,          // cap for the retry delay while the backend is unreachable
+  scenarioStepDelayMs: 400,    // step_delay_ms sent with scenario runs
+});
 const PAGE_LIMIT = 500;
 const DETAIL_CONCURRENCY = 4;
-export const SCENARIO_STEP_DELAY_MS = 400;
+/** Payload of manually sent requests (the content is irrelevant to the demo). */
+export const MANUAL_PAYLOAD = Object.freeze({ source: 'dashboard' });
 
 const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
@@ -45,7 +54,7 @@ function describeError(error) {
   return `${error?.code ?? 'ERROR'}${error?.status ? ` (${error.status})` : ''}: ${error?.message ?? String(error)}`;
 }
 
-function createController(set) {
+function createController(set, timing) {
   let alive = false;
   let generation = 0;
   let timer = null;
@@ -71,6 +80,9 @@ function createController(set) {
   let live = null;                 // { scenarioId, runId, events: [], startedAt }
   let lastFinished = null;         // simulation object of the last finished run
   let scenarioResults = {};
+  let actionInFlight = null;       // name of the manual action awaiting its HTTP answer
+  let banner = null;               // { id, text, tone } shown above the dashboard
+  let bannerSeq = 0;
 
   const guard = (fn) => (...args) => { if (alive) fn(...args); };
   const publish = {
@@ -78,7 +90,20 @@ function createController(set) {
     wire: guard(() => set.wire(wire)),
     simulation: guard(() => set.simulation(computeSimulation())),
     scenarioResults: guard(() => set.scenarioResults({ ...scenarioResults })),
+    busy: guard(() => set.busy(computeBusy())),
+    banner: guard(() => set.banner(banner)),
   };
+
+  /** Mutating controls must be disabled while this is true. */
+  function computeBusy() {
+    return Boolean(lastState?.busy || lastState?.runningScenario || requested !== null || actionInFlight);
+  }
+
+  function showBanner(text, tone = 'bad') {
+    bannerSeq += 1;
+    banner = { id: bannerSeq, text, tone };
+    publish.banner();
+  }
 
   function computeSimulation() {
     if (live) {
@@ -201,6 +226,7 @@ function createController(set) {
 
   async function refreshState() {
     const raw = await api.getState();
+    if (!alive) return;   // unmounted while the request was in flight: fetch nothing more
     const ids = raw.dialogs.map((d) => d.dialog_id);
     const known = new Set(ids);
     for (const id of [...details.keys()]) if (!known.has(id)) details.delete(id);
@@ -218,6 +244,7 @@ function createController(set) {
     set.nodes(lastState.nodes);
     set.connected(true);
     publish.simulation();
+    publish.busy();
 
     if (needScenarios) {
       needScenarios = false;
@@ -242,7 +269,7 @@ function createController(set) {
     ingest(page.events, { backlog });
     cursor = page.cursor;
 
-    if (page.events.length || allDirty || Date.now() - lastStateAt >= STATE_MAX_AGE_MS) {
+    if (page.events.length || allDirty || Date.now() - lastStateAt >= timing.stateMaxAgeMs) {
       await refreshState();
     }
     return page.events.length >= PAGE_LIMIT;   // more to read
@@ -258,10 +285,10 @@ function createController(set) {
     if (polling) { pollAgain = true; return; }
     polling = true;
     const gen = generation;
-    let next = EVENTS_MS;
+    let next = timing.eventsMs;
     try {
       if (isHidden() && !forceNext) {
-        next = HIDDEN_MS;
+        next = timing.hiddenMs;
       } else {
         forceNext = false;
         const more = await pollOnce();
@@ -271,7 +298,7 @@ function createController(set) {
     } catch {
       failures += 1;
       goOffline();
-      next = Math.min(EVENTS_MS * 2 ** failures, MAX_BACKOFF_MS);
+      next = Math.min(timing.eventsMs * 2 ** failures, timing.maxBackoffMs);
     } finally {
       polling = false;
     }
@@ -313,9 +340,10 @@ function createController(set) {
       requested = id;
       live = null;
       publish.simulation();
+      publish.busy();
       pollNow();
       try {
-        const result = await api.runScenario(id, { step_delay_ms: SCENARIO_STEP_DELAY_MS });
+        const result = await api.runScenario(id, { step_delay_ms: timing.scenarioStepDelayMs });
         const mapped = mapScenarioResult(result);
         lastFinished = mapped.simulation;
         scenarioResults = { ...scenarioResults, [id]: mapped.result };
@@ -330,11 +358,13 @@ function createController(set) {
         notice('error', error?.code === 'RUNTIME_BUSY'
           ? `demo ${id} not started · the backend is busy with another operation (409 RUNTIME_BUSY)`
           : `demo ${id} could not run · ${describeError(error)}`, { code: error?.code ?? null });
+        showBanner(`Demo ${id} did not run: ${errorMessage(error)}`);
         return null;
       } finally {
         requested = null;
         live = null;
         publish.simulation();
+        publish.busy();
         pollNow();
       }
     },
@@ -359,6 +389,7 @@ function createController(set) {
         notice('error', error?.code === 'RESET_DISABLED'
           ? 'reset refused by the backend (403 RESET_DISABLED)'
           : `reset failed · ${describeError(error)}`, { code: error?.code ?? null });
+        showBanner(`Start over failed: ${errorMessage(error)}`);
       } finally {
         pollNow();
       }
@@ -369,13 +400,48 @@ function createController(set) {
       publish.logs();
     },
 
+    dismissBanner() {
+      banner = null;
+      publish.banner();
+    },
+
+    /**
+     * One manual action = exactly one API call.  Never throws: resolves to
+     * { ok, result?, error?, code, message } where message is user text
+     * (src/api/messages.js).  The outcome also goes to the activity feed.
+     */
+    async act(name, call, format) {
+      if (actionInFlight !== null || requested !== null) {
+        return { ok: false, code: 'LOCAL_BUSY', message: 'Another action is still running — wait for it to finish.' };
+      }
+      actionInFlight = name;
+      publish.busy();
+      try {
+        const result = await call();
+        const message = format(result);
+        notice('success', `manual ${name} · ${message}`, { action: name });
+        return { ok: true, result, code: null, message };
+      } catch (error) {
+        const message = errorMessage(error);
+        notice('error', `manual ${name} failed · ${message}`, { action: name, code: error?.code ?? null });
+        return { ok: false, error, code: error?.code ?? null, message };
+      } finally {
+        actionInFlight = null;
+        publish.busy();
+        pollNow();
+      }
+    },
+
     manualNotice() {
       notice('success', 'manual sending is not available in live-backend mode yet · use the demonstrations (manual controls arrive in Phase 7b)');
     },
   };
 }
 
-export function useBackendEngine() {
+/**
+ * @param {{ timing?: Partial<typeof DEFAULT_TIMING> }} [options]  tests only
+ */
+export function useBackendEngine(options) {
   const [logs, setLogs] = useState([]);
   const [wire, setWire] = useState([]);
   const [dialogs, setDialogs] = useState([]);
@@ -384,6 +450,8 @@ export function useBackendEngine() {
   const [simulation, setSimulation] = useState(idleSimulation);
   const [scenarioResults, setScenarioResults] = useState({});
   const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [banner, setBanner] = useState(null);
 
   const controller = useRef(null);
   if (controller.current === null) {
@@ -396,7 +464,9 @@ export function useBackendEngine() {
       simulation: setSimulation,
       scenarioResults: setScenarioResults,
       connected: setConnected,
-    });
+      busy: setBusy,
+      banner: setBanner,
+    }, { ...DEFAULT_TIMING, ...(options?.timing ?? {}) });
   }
 
   useEffect(() => {
@@ -416,11 +486,23 @@ export function useBackendEngine() {
     simulation,
     scenarioResults,
     connected,
+    busy,
+    banner,
+    dismissBanner: () => ctl.dismissBanner(),
     dispatch: () => ctl.manualNotice(),
     runScenario: (id) => ctl.runScenario(id),
     runAllScenarios: () => ctl.runAllScenarios(),
     clearLogs: () => ctl.clearLogs(),
     clearBlackholes: () => ctl.manualNotice(),
     resetEngine: () => ctl.reset(),
+    /** Manual controls (Phase 7b): each is exactly one API call. */
+    actions: {
+      createTask: (taskId) => ctl.act('new task', () => api.createDialog(taskId), (r) => dialogMessage('create', r.dialog)),
+      send: (dialogId, fault) => ctl.act('send', () => api.sendRequest(dialogId, MANUAL_PAYLOAD, fault || undefined), outcomeMessage),
+      retry: (dialogId, seq, fault) => ctl.act('retry', () => api.retryRequest(dialogId, seq, fault || undefined), outcomeMessage),
+      complete: (dialogId) => ctl.act('complete', () => api.completeDialog(dialogId), (r) => dialogMessage('complete', r.dialog)),
+      abort: (dialogId, reason) => ctl.act('abort', () => api.failDialog(dialogId, reason), (r) => dialogMessage('abort', r.dialog)),
+      restart: (adapter) => ctl.act(`restart ${adapter}`, () => api.restartAdapter(adapter), restartMessage),
+    },
   };
 }

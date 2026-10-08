@@ -41,7 +41,12 @@ function NodeCard({ icon, name, role, toneName, statusLabel, pulse, stats, class
  * the markers are the faults happening right now. Everything it draws is driven
  * by the engine's wire feed, so the animation cannot drift from the real state.
  */
-export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs, dispatch, clearBlackholes, highlightedTone, manualEnabled = true }) {
+/**
+ * `backendMode` (live backend): the old simulated send controls are replaced by
+ * `manualPanel` (ManualControls), and the channel note describes what the
+ * backend transport can actually do.  The simulation keeps everything as it was.
+ */
+export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs, dispatch, clearBlackholes, highlightedTone, backendMode = false, manualPanel = null }) {
   const reducedMotion = usePrefersReducedMotion();
   const { channelRef, storageRef } = usePacketLayer(wire, reducedMotion);
 
@@ -73,7 +78,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
 
   /* --- manual test traffic ------------------------------------------- */
   const handleSend = useCallback(async () => {
-    if (sending || !manualEnabled) return;
+    if (sending) return;
     setSending(true);
     const dialogId = `task-manual-${Date.now().toString(36).slice(-4)}`;
     const total = Math.max(1, Math.min(6, count));
@@ -102,7 +107,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
     } finally {
       setSending(false);
     }
-  }, [count, dispatch, duplicate, loseOne, outOfOrder, sending, clearBlackholes, manualEnabled]);
+  }, [count, dispatch, duplicate, loseOne, outOfOrder, sending, clearBlackholes]);
 
   const channelNote =
     channelStatus === 'offline'
@@ -111,9 +116,11 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
         ? 'The channel is dropping packets right now'
         : channelStatus === 'booting'
           ? 'The channel is coming back up'
-          : heldCount > 0
-            ? `${heldCount} packet${heldCount > 1 ? 's are' : ' is'} held safely while a gap is filled`
-            : 'Packets can be lost, delayed or arrive out of order';
+          : backendMode
+            ? 'Requests or replies can be lost — the sender retries with the same ids'
+            : heldCount > 0
+              ? `${heldCount} packet${heldCount > 1 ? 's are' : ' is'} held safely while a gap is filled`
+              : 'Packets can be lost, delayed or arrive out of order';
 
   return (
     <section className="glass overflow-hidden">
@@ -246,14 +253,10 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
       </div>
 
       {/* ---------------- manual test controls ---------------- */}
+      {backendMode ? manualPanel : (
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3 px-6 py-5">
         <div className="min-w-0">
           <p className="overline mb-2">Or try it yourself</p>
-          {!manualEnabled ? (
-            <p className="mb-2 text-[12px] text-amber-300/90">
-              Manual controls are being rebuilt for the live backend — use the demonstrations below.
-            </p>
-          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
               <span className="text-[12.5px] text-slate-400">Packets</span>
@@ -265,13 +268,12 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
                 onChange={(event) => setCount(Number(event.target.value))}
                 className="tabular w-8 bg-transparent text-center text-[13px] font-bold text-white outline-none"
                 aria-label="How many packets to send"
-                disabled={!manualEnabled}
               />
             </label>
-            <Toggle checked={loseOne} onChange={setLoseOne} label="Lose one in the network" tone="bad" disabled={sending || !manualEnabled} />
-            <Toggle checked={outOfOrder} onChange={setOutOfOrder} label="Deliver out of order" tone="warn" disabled={sending || !manualEnabled} />
-            <Toggle checked={duplicate} onChange={setDuplicate} label="Send a duplicate" tone="duplicate" disabled={sending || !manualEnabled} />
-            <button type="button" className="btn-primary" onClick={handleSend} disabled={sending || !manualEnabled}>
+            <Toggle checked={loseOne} onChange={setLoseOne} label="Lose one in the network" tone="bad" disabled={sending} />
+            <Toggle checked={outOfOrder} onChange={setOutOfOrder} label="Deliver out of order" tone="warn" disabled={sending} />
+            <Toggle checked={duplicate} onChange={setDuplicate} label="Send a duplicate" tone="duplicate" disabled={sending} />
+            <button type="button" className="btn-primary" onClick={handleSend} disabled={sending}>
               {sending ? <Pause size={15} /> : <Play size={15} />}
               {sending ? 'Sending...' : 'Send packets'}
             </button>
@@ -294,6 +296,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
           </span>
         </div>
       </div>
+      )}
     </section>
   );
 }

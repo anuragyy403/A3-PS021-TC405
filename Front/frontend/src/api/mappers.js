@@ -48,31 +48,61 @@ export function emptyMetrics() {
     durableDialogs: 0,
     bootAt: null,
     uptimeMs: 0,
+    // backend-only extras (undefined in the simulation engine)
+    inProgress: 0,
+    notStarted: 0,
+    restoredOpen: 0,
   };
 }
 
 /**
- * @param {object} metrics  state.metrics from GET /api/state
- * @param {object} runtime  state.runtime from GET /api/state
+ * Recovery counted honestly (Phase 7b): a recovery is "attempted" once a
+ * restored dialog has finished (any terminal state), "succeeded" if it finished
+ * RECOVERED.  Restored dialogs that are still open are reported separately —
+ * they have not failed.  Needs the dialog summaries; falls back to the durable
+ * totals when they are not available.
  */
-export function mapMetrics(metrics, runtime) {
+export function recoveryCounts(metrics, summaries) {
+  const by = metrics?.by_state ?? {};
+  if (!Array.isArray(summaries)) {
+    return { attempted: metrics?.restored_total ?? 0, succeeded: by.RECOVERED ?? 0, open: 0 };
+  }
+  const restored = summaries.filter((d) => d.restored);
+  const finished = restored.filter((d) => d.terminal ?? TERMINAL.has(d.state));
+  return {
+    attempted: finished.length,
+    succeeded: finished.filter((d) => d.state === 'RECOVERED').length,
+    open: restored.length - finished.length,
+  };
+}
+
+/**
+ * @param {object} metrics    state.metrics from GET /api/state
+ * @param {object} runtime    state.runtime from GET /api/state
+ * @param {object[]} [summaries] state.dialogs (for the recovery counts)
+ */
+export function mapMetrics(metrics, runtime, summaries) {
   if (!metrics) return emptyMetrics();
   const by = metrics.by_state ?? {};
-  const attempted = metrics.restored_total ?? 0;
-  const succeeded = by.RECOVERED ?? 0;
+  const recovery = recoveryCounts(metrics, summaries);
+  const attempted = recovery.attempted;
+  const succeeded = recovery.succeeded;
   return {
     ...emptyMetrics(),
     packets: metrics.transport_attempts ?? 0,          // durable: SUM(attempts)
     dedup: metrics.duplicates_since_boot ?? 0,          // since server start
     suppressed: metrics.duplicates_since_boot ?? 0,
     sideEffects: metrics.processed_count ?? 0,          // durable "work done"
-    recoveryAttempted: attempted,                       // dialogs that went through recover()
-    recoverySucceeded: succeeded,                       // of those, completed RECOVERED
+    recoveryAttempted: attempted,                       // restored dialogs that have finished
+    recoverySucceeded: succeeded,                       // of those, finished RECOVERED
     recoveryRate: attempted ? (succeeded / attempted) * 100 : null,
+    restoredOpen: recovery.open,                        // restored dialogs still open (not failures)
+    inProgress: by.PROCESSING ?? 0,
+    notStarted: by.INITIATED ?? 0,
     activeDialogs: (by.INITIATED ?? 0) + (by.PROCESSING ?? 0),
     totalDialogs: metrics.dialogs_total ?? 0,
     committed: by.COMMITTED ?? 0,
-    recovered: succeeded,
+    recovered: by.RECOVERED ?? 0,
     failed: by.FAILED ?? 0,
     durableDialogs: metrics.dialogs_total ?? 0,
     bootAt: runtime?.booted_at ? toMs(runtime.booted_at) : null,
@@ -182,7 +212,7 @@ export function mapState(state, details = new Map()) {
   const summaries = Array.isArray(state?.dialogs) ? state.dialogs : [];
   return {
     dialogs: summaries.map((s) => mapDialogView(s, details.get(s.dialog_id))),
-    metrics: mapMetrics(state?.metrics, state?.runtime),
+    metrics: mapMetrics(state?.metrics, state?.runtime, summaries),
     nodes: mapNodes(state?.nodes),
     busy: Boolean(state?.runtime?.busy),
     runningScenario: state?.runtime?.running_scenario ?? null,
@@ -262,6 +292,7 @@ export function mapEventToLog(event) {
   const details = event.details && typeof event.details === 'object' ? event.details : {};
   return {
     id: event.id,
+    origin: 'backend',          // narrate.js backend-only rules key on this
     at,
     ts: new Date(at).toISOString(),
     clock: clockStamp(at),
@@ -444,6 +475,7 @@ export function noticeLog(kind, msg, meta = {}) {
   localSeq += 1;
   return {
     id: `ui-${localSeq}`,
+    origin: 'dashboard',
     at,
     ts: new Date(at).toISOString(),
     clock: clockStamp(at),

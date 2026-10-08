@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint src",
-    "test": "node tests/conformance.mjs && node tests/mappers.mjs"
+    "test": "node tests/conformance.mjs && node tests/mappers.mjs && node tests/messages.mjs && node tests/backendEngine.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.383.0",
