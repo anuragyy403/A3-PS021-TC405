@@ -149,6 +149,17 @@ export class DialogRepository {
   }
 
   /**
+   * Number of dialogs that have been through recovery (restored = 1).
+   */
+  countRestored(): number {
+    const stmt = this.db.prepare(`SELECT COUNT(*) AS n FROM dialogs WHERE restored = 1`);
+    stmt.step();
+    const row = stmt.getAsObject() as unknown as { n: number };
+    stmt.free();
+    return Number(row.n);
+  }
+
+  /**
    * Return the count of dialogs per state.
    */
   countByState(): Record<string, number> {

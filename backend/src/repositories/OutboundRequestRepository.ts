@@ -125,6 +125,39 @@ export class OutboundRequestRepository {
   }
 
   /**
+   * Return every outbound request (PENDING and ACKED) for a dialog, in seq order.
+   */
+  findByDialog(dialogId: string): OutboundRequestRecord[] {
+    const stmt = this.db.prepare(
+      `SELECT * FROM outbound_requests WHERE dialog_id = ? ORDER BY seq ASC`,
+    );
+    stmt.bind([dialogId]);
+    const rows: OutboundRequestRecord[] = [];
+    while (stmt.step()) {
+      rows.push(rowToRecord(stmt.getAsObject() as unknown as RawRow));
+    }
+    stmt.free();
+    return rows;
+  }
+
+  /**
+   * Total transport attempts (SUM of attempts) for one dialog, or across all
+   * dialogs when dialogId is omitted.  0 when there are no rows.
+   */
+  sumAttempts(dialogId?: string): number {
+    const stmt = dialogId === undefined
+      ? this.db.prepare(`SELECT COALESCE(SUM(attempts), 0) AS n FROM outbound_requests`)
+      : this.db.prepare(
+          `SELECT COALESCE(SUM(attempts), 0) AS n FROM outbound_requests WHERE dialog_id = ?`,
+        );
+    if (dialogId !== undefined) stmt.bind([dialogId]);
+    stmt.step();
+    const row = stmt.getAsObject() as unknown as RawRow;
+    stmt.free();
+    return Number(row['n']);
+  }
+
+  /**
    * Highest seq ever assigned in a dialog, or 0 if none.
    */
   maxSeq(dialogId: string): number {

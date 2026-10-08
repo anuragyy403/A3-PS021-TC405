@@ -72,6 +72,20 @@ export class DialogTerminalError extends AppError {
   }
 }
 
+/** A runtime mutation was attempted while another one holds the lock. */
+export class RuntimeBusyError extends AppError {
+  constructor() {
+    super('Runtime is busy with another operation; try again', 'RUNTIME_BUSY', 409);
+  }
+}
+
+/** The demo-only reset is disabled, or refused for this database path. */
+export class ResetDisabledError extends AppError {
+  constructor(reason = 'Reset is disabled (ALLOW_RESET)') {
+    super(reason, 'RESET_DISABLED', 403);
+  }
+}
+
 /** Incoming data failed Zod or manual validation. */
 export class ValidationError extends AppError {
   constructor(details: string) {
