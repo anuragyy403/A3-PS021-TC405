@@ -28,7 +28,7 @@ import type { Database } from 'sql.js';
 import { AppError } from './errors.js';
 import { logger } from './logger.js';
 
-export function createApp(db: Database): Express {
+export function createApp(db: Database, dbPath: string): Express {
   const app = express();
 
   // -------------------------------------------------------------------------

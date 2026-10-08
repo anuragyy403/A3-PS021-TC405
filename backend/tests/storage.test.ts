@@ -42,14 +42,11 @@ function now(): string {
 }
 
 function makeDialog(overrides: Partial<DialogRecord> = {}): DialogRecord {
-  const ts = now();
   return {
     dialog_id:  `dlg-test-${Math.random().toString(36).slice(2, 7)}`,
     task_id:    `task-deadbeef`,
     state:      'INITIATED',
     restored:   false,
-    created_at: ts,
-    updated_at: ts,
     ...overrides,
   };
 }
@@ -78,8 +75,8 @@ beforeEach(() => {
   dbPath = tempDbPath('storage');
   const handle = openDatabase(dbPath, SQL);
   currentDb = handle.db;
-  dialogs  = new DialogRepository(currentDb);
-  requests = new RequestRepository(currentDb);
+  dialogs  = new DialogRepository(currentDb, dbPath);
+  requests = new RequestRepository(currentDb, dbPath);
 });
 
 afterEach(() => {
@@ -127,23 +124,21 @@ describe('Test 2 — update lifecycle state', () => {
   it('transitions from INITIATED to PROCESSING and the new state is stored', () => {
     dialogs.create(makeDialog({ dialog_id: 'dlg-t2' }));
 
-    const updatedAt = now();
-    dialogs.updateState('dlg-t2', 'PROCESSING', false, updatedAt);
+    dialogs.updateState('dlg-t2', 'PROCESSING', false);
 
     const found = dialogs.findById('dlg-t2');
     expect(found!.state).toBe('PROCESSING');
-    expect(found!.updated_at).toBe(updatedAt);
   });
 
   it('transitions from PROCESSING to COMMITTED', () => {
     dialogs.create(makeDialog({ dialog_id: 'dlg-t2b', state: 'PROCESSING' }));
-    dialogs.updateState('dlg-t2b', 'COMMITTED', false, now());
+    dialogs.updateState('dlg-t2b', 'COMMITTED', false);
     expect(dialogs.findById('dlg-t2b')!.state).toBe('COMMITTED');
   });
 
   it('transitions to RECOVERED and sets restored flag', () => {
     dialogs.create(makeDialog({ dialog_id: 'dlg-t2c', state: 'PROCESSING' }));
-    dialogs.updateState('dlg-t2c', 'RECOVERED', true, now());
+    dialogs.updateState('dlg-t2c', 'RECOVERED', true);
 
     const found = dialogs.findById('dlg-t2c');
     expect(found!.state).toBe('RECOVERED');
@@ -262,38 +257,33 @@ describe('Test 5 — persistence across database close / reopen (REAL durability
     const PERSIST_DB = tempDbPath('persist');
     try {
       // -----------------------------------------------------------------
-      // STEP 1: Open, write, flush to disk, close
+      // STEP 1: Open, write, close (repositories auto-persist)
       // -----------------------------------------------------------------
       const handle1 = openDatabase(PERSIST_DB, SQL);
-      const dialogs1  = new DialogRepository(handle1.db);
-      const requests1 = new RequestRepository(handle1.db);
+      const dialogs1  = new DialogRepository(handle1.db, PERSIST_DB);
+      const requests1 = new RequestRepository(handle1.db, PERSIST_DB);
 
       const dialogId = 'dlg-persist-test';
-      const ts = now();
 
       dialogs1.create({
         dialog_id:  dialogId,
         task_id:    'task-cafebabe',
         state:      'PROCESSING',
         restored:   false,
-        created_at: ts,
-        updated_at: ts,
       });
       requests1.record({
         dialog_id:    dialogId,
         seq:          1,
-        processed_at: ts,
+        processed_at: now(),
         result:       JSON.stringify({ outcome: 'applied', seq: 1 }),
       });
 
-      // Verify in-memory before flush
+      // Verify in-memory before close
       expect(dialogs1.findById(dialogId)).not.toBeNull();
       expect(requests1.findByKey(dialogId, 1)).not.toBeNull();
 
-      // Flush to disk ← this is what makes it durable
-      persistToDisk(handle1.db, PERSIST_DB);
-
       // Close — simulates process exit
+      // (No manual persistToDisk needed — repositories already flushed)
       closeDatabase(handle1.db);
       expect(fs.existsSync(PERSIST_DB)).toBe(true);
 
@@ -301,8 +291,8 @@ describe('Test 5 — persistence across database close / reopen (REAL durability
       // STEP 2: Reopen — simulates process restart
       // -----------------------------------------------------------------
       const handle2 = openDatabase(PERSIST_DB, SQL);
-      const dialogs2  = new DialogRepository(handle2.db);
-      const requests2 = new RequestRepository(handle2.db);
+      const dialogs2  = new DialogRepository(handle2.db, PERSIST_DB);
+      const requests2 = new RequestRepository(handle2.db, PERSIST_DB);
 
       // -----------------------------------------------------------------
       // STEP 3: Verify data survived
@@ -336,32 +326,27 @@ describe('Test 5 — persistence across database close / reopen (REAL durability
     const PERSIST_DB2 = tempDbPath('persist2');
     try {
       const handle1 = openDatabase(PERSIST_DB2, SQL);
-      const dialogs1  = new DialogRepository(handle1.db);
-      const requests1 = new RequestRepository(handle1.db);
+      const dialogs1  = new DialogRepository(handle1.db, PERSIST_DB2);
+      const requests1 = new RequestRepository(handle1.db, PERSIST_DB2);
 
       const dialogId = 'dlg-dedup-persist';
-      const ts = now();
       dialogs1.create({
         dialog_id:  dialogId,
         task_id:    'task-00000001',
         state:      'PROCESSING',
         restored:   false,
-        created_at: ts,
-        updated_at: ts,
       });
 
       // First processing of seq=1 — persisted before simulated crash
       expect(requests1.record(makeRequest(dialogId, 1))).toBe(true);
 
-      // Flush to disk (simulates durable commit before crash)
-      persistToDisk(handle1.db, PERSIST_DB2);
-
       // Close — simulates crash
+      // (No manual persistToDisk needed — repository already flushed)
       closeDatabase(handle1.db);
 
       // Reopen — simulates restart
       const handle2 = openDatabase(PERSIST_DB2, SQL);
-      const requests2 = new RequestRepository(handle2.db);
+      const requests2 = new RequestRepository(handle2.db, PERSIST_DB2);
 
       // Retry of seq=1 after restart — MUST be recognised as duplicate
       const afterRestart = requests2.record(makeRequest(dialogId, 1));

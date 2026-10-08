@@ -17,8 +17,8 @@ beforeAll(async () => {
 
 describe('GET /health', () => {
   it('returns 200 with status ok when database is open', async () => {
-    const { db } = openDatabase(':memory:', SQL);
-    const app = createApp(db);
+    const { db, dbPath } = openDatabase(':memory:', SQL);
+    const app = createApp(db, dbPath);
 
     const res = await (request(app) as ReturnType<typeof request>).get('/health');
 
@@ -32,8 +32,8 @@ describe('GET /health', () => {
   });
 
   it('returns 404 for unknown routes', async () => {
-    const { db } = openDatabase(':memory:', SQL);
-    const app = createApp(db);
+    const { db, dbPath } = openDatabase(':memory:', SQL);
+    const app = createApp(db, dbPath);
 
     const res = await (request(app) as ReturnType<typeof request>).get('/no-such-route');
 

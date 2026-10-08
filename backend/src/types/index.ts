@@ -96,8 +96,6 @@ export interface DialogRecord {
   task_id:    string;
   state:      LifecycleState;
   restored:   boolean;
-  created_at: string; // ISO 8601
-  updated_at: string; // ISO 8601
 }
 
 export const DialogRecordSchema = z.object({
@@ -105,8 +103,6 @@ export const DialogRecordSchema = z.object({
   task_id:    z.string().min(1),
   state:      LifecycleStateSchema,
   restored:   z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 // ---------------------------------------------------------------------------

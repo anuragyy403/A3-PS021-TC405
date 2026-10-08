@@ -6,18 +6,26 @@
  * Deduplication key: (dialog_id, seq)
  *
  * record() returns true if newly inserted, false if (dialog_id, seq) already exists.
+ *
+ * Persistence:
+ *   Every mutation method calls persistToDisk() before returning to ensure
+ *   the change is flushed to the SQLite file.  This guarantees durability
+ *   across process restarts (deduplication records survive restart).
  */
 
 import type { Database } from 'sql.js';
 import type { RequestRecord } from '../types/index.js';
+import { persistToDisk } from '../db/index.js';
 
 type RawRow = Record<string, unknown>;
 
 export class RequestRepository {
   private readonly db: Database;
+  private readonly dbPath: string;
 
-  constructor(db: Database) {
+  constructor(db: Database, dbPath: string) {
     this.db = db;
+    this.dbPath = dbPath;
   }
 
   // -------------------------------------------------------------------------
@@ -31,6 +39,7 @@ export class RequestRepository {
    * Returns false → already existed (duplicate — do not re-execute side effect)
    *
    * NOTE: Check-then-insert is safe in single-threaded Node.js.
+   * Flushes to disk before returning.
    */
   record(entry: RequestRecord): boolean {
     const existing = this.findByKey(entry.dialog_id, entry.seq);
@@ -44,6 +53,7 @@ export class RequestRepository {
       [entry.dialog_id, entry.seq, entry.processed_at, entry.result],
     );
 
+    persistToDisk(this.db, this.dbPath);
     return true;
   }
 

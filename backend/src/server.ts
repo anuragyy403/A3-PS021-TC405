@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   logger.info('database opened', { path: dbPath });
 
   // 3. Create Express application
-  const app = createApp(db);
+  const app = createApp(db, dbPath);
 
   // 4. Start listening
   const server = app.listen(config.port, () => {

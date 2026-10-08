@@ -25,9 +25,7 @@ CREATE TABLE IF NOT EXISTS dialogs (
   state      TEXT    NOT NULL DEFAULT 'INITIATED'
                CHECK (state IN ('INITIATED','PROCESSING','COMMITTED','RECOVERED','FAILED')),
   restored   INTEGER NOT NULL DEFAULT 0   -- 0 = false, 1 = true (SQLite has no BOOLEAN)
-               CHECK (restored IN (0, 1)),
-  created_at TEXT    NOT NULL,            -- ISO 8601
-  updated_at TEXT    NOT NULL             -- ISO 8601
+               CHECK (restored IN (0, 1))
 );
 
 -- ---------------------------------------------------------------------------
