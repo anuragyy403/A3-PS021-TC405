@@ -2,8 +2,7 @@
  * DialogRepository — all SQL that touches the `dialogs` table.
  *
  * Uses the sql.js API (pure WebAssembly SQLite).
- * The SQL statements are identical to what better-sqlite3 would use;
- * only the method-call style differs.
+ * The SQL is plain SQLite; only the sql.js method-call style is driver-specific.
  *
  * sql.js API notes:
  *   db.run(sql, params)           — execute, no return value
@@ -19,7 +18,7 @@
  *
  * Crash-window note:
  *   The crash window (side effect before persist) is an acknowledged
- *   limitation documented in KIRO_PROJECT_CONTEXT.md.  This implementation
+ *   limitation documented in README.md and docs/EXPERIMENTAL_SCHEMA.md.  This implementation
  *   minimizes that window by persisting immediately after the SQL mutation.
  */
 

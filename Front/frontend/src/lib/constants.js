@@ -59,7 +59,7 @@ export const STATE_PLAIN = {
   INITIATED: { label: 'Not started yet', hint: 'The task has been created but no packet has arrived.' },
   PROCESSING: { label: 'In progress', hint: 'Packets are arriving and work is being done.' },
   WAITING_ACK: { label: 'Waiting for confirmation', hint: 'All work is done, waiting for the receiver to confirm.' },
-  COMMITTED: { label: 'Completed', hint: 'Every packet was processed exactly once.' },
+  COMMITTED: { label: 'Completed', hint: 'Every packet was applied; retried duplicates were not applied again.' },
   RECOVERED: { label: 'Recovered', hint: 'The sender crashed, then finished the task from saved state.' },
   FAILED: { label: 'Failed', hint: 'A packet never arrived, so the task could not be completed.' },
 };
@@ -140,7 +140,7 @@ export const PIPELINE_NODES = [
   {
     key: 'receiver',
     label: 'Receiver Agent',
-    plain: 'Applies each packet exactly once, in the right order.',
+    plain: 'Applies each new packet in order and skips retried duplicates.',
     Icon: 'server',
     accent: 'violet',
   },

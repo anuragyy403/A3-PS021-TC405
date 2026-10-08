@@ -203,7 +203,7 @@ const RULES = [
         return 'This is the copy that was requested earlier. The work was still only done once.';
       }
       const done = entry.meta?.side_effects;
-      return typeof done === 'number' && done > 0 ? `Work item ${done} completed, exactly once.` : 'Completed exactly once.';
+      return typeof done === 'number' && done > 0 ? `Work item ${done} completed. A retried copy would not be applied again.` : 'Completed. A retried copy would not be applied again.';
     },
   },
   {

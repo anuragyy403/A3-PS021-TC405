@@ -202,7 +202,7 @@ describe('Test 5 — Task identity verification', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: Request processed exactly once under normal delivery
+// Test 6: Each new request executes its side effect once under normal delivery
 // ---------------------------------------------------------------------------
 
 describe('Test 6 — Normal processing', () => {

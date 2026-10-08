@@ -6,7 +6,8 @@
  *
  * NOT an MCP implementation.
  * NOT an A2A implementation.
- * Experimental schema for PS-021 demonstration purposes only.
+ * Experimental schema for PS-021 demonstration purposes only
+ * (see docs/EXPERIMENTAL_SCHEMA.md).
  */
 
 /**
@@ -15,7 +16,8 @@
  * Contains the three identifiers required for correlation and deduplication:
  *   - dialog_id: correlation key
  *   - task_id:   task identity
- *   - seq:       request sequence / request_id for deduplication
+ *   - seq:       logical request within the dialog; (dialog_id, seq) is the
+ *                deduplication key.  A retry carries the same seq.
  */
 export interface AdapterRequest {
   dialog_id: string;

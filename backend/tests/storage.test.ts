@@ -5,7 +5,7 @@
  * Test 5 is the critical one: it proves REAL durability (not in-memory).
  *
  * Driver: sql.js (pure WebAssembly SQLite — no native compilation required)
- * Architecture: identical to better-sqlite3 target; only write-flush differs.
+ * Persistence: whole database written to the file after every mutation.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';

@@ -1,9 +1,16 @@
 -- PS-021 Nighthawks — authoritative SQLite schema.
 --
--- Two tables are the minimum required by the approved architecture:
+-- Three tables:
 --
---   dialogs  — dialog identity, lifecycle state, timestamps
---   requests — processed-request ledger (deduplication source of truth)
+--   dialogs           — dialog identity (dialog_id, task_id), lifecycle state,
+--                       restored flag
+--   requests          — Adapter B's processed-request ledger
+--                       (deduplication source of truth)
+--   outbound_requests — Adapter A's durable send log (PENDING / ACKED,
+--                       payload, attempts)
+--
+-- Experimental schema — see docs/EXPERIMENTAL_SCHEMA.md.  Not a standard,
+-- not MCP, not A2A.
 --
 -- The deduplication key is (dialog_id, seq).  Two different dialogs can
 -- use identical sequence numbers without collision because dialog_id is
@@ -13,7 +20,9 @@
 --       It is a frontend-only presentation state and must not enter the
 --       backend schema.
 
-PRAGMA journal_mode = WAL;   -- Write-Ahead Log: concurrent readers during writes
+-- No journal_mode pragma: sql.js runs SQLite in memory and the whole database
+-- is written to the file by persistToDisk() after every mutation, so SQLite's
+-- own journaling plays no part in durability here.
 PRAGMA foreign_keys = ON;
 
 -- ---------------------------------------------------------------------------

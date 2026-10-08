@@ -27,6 +27,6 @@
     "vitest": "1.6.0"
   },
   "_notes": {
-    "sqlite_driver": "sql.js is a pure WebAssembly SQLite port. No native compilation required. Approved driver (better-sqlite3) requires VS build tools unavailable here. Schema, SQL, repository API, and all business logic are identical. Switch back to better-sqlite3 by changing the driver import in src/db/index.ts only."
+    "sqlite_driver": "sql.js (pure WebAssembly SQLite) is the driver in use: no native compilation required. better-sqlite3 was not used because it needs a C++ build toolchain that is unavailable on the development machine. The database lives in memory and is written to the .db file after every mutation (src/db/index.ts persistToDisk)."
   }
 }

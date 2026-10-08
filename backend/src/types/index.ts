@@ -24,9 +24,10 @@ import { z } from 'zod';
  *   PROCESSING — at least one request processed, work still ongoing
  *
  * Terminal (no outgoing transitions):
- *   COMMITTED  — task completed successfully, no crash occurred
- *   RECOVERED  — task completed successfully after Adapter A restart
- *   FAILED     — task could not complete (unrecoverable gap or error)
+ *   COMMITTED  — task completed by Adapter A, dialog never restored
+ *   RECOVERED  — task completed by Adapter A after a restart + recover()
+ *                (restored = true)
+ *   FAILED     — retry budget exhausted, or explicit AdapterA.failDialog()
  *
  * Transition table (enforced by DialogManager, defined here for reference):
  *   INITIATED  → PROCESSING | FAILED
@@ -117,7 +118,7 @@ export const DialogRecordSchema = z.object({
  *
  * seq:    sequence number = logical request identity within the dialog.
  *         A retry of the same request carries the same seq.  Only the
- *         attempt counter changes on retry.
+ *         attempts counter in Adapter A's send log changes on retry.
  *
  * result: JSON-serialised result stored so a duplicate response can be
  *         returned from the ledger rather than re-executing the side effect.
