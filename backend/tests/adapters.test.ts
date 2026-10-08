@@ -240,7 +240,7 @@ describe('Test 7 — Duplicate detection', () => {
     expect(resp1.status).toBe('ok');
 
     // Retry with same seq
-    const resp2 = await adapterA.retryRequest(dialogId, 1, { op: 'work' });
+    const resp2 = await adapterA.retryRequest(dialogId, 1);
     expect(resp2.status).toBe('duplicate');
   });
 
@@ -253,7 +253,7 @@ describe('Test 7 — Duplicate detection', () => {
     const originalResult = resp1.result;
 
     // Retry with same seq
-    const resp2 = await adapterA.retryRequest(dialogId, 1, payload);
+    const resp2 = await adapterA.retryRequest(dialogId, 1);
 
     expect(resp2.status).toBe('duplicate');
     expect(resp2.result).toEqual(originalResult);
@@ -273,11 +273,11 @@ describe('Test 8 — Duplicate-side-effect prevention', () => {
     expect(sideEffects.getProcessCount(dialogId)).toBe(1);
 
     // Duplicate → side effect NOT executed
-    await adapterA.retryRequest(dialogId, 1, { op: 'work' });
+    await adapterA.retryRequest(dialogId, 1);
     expect(sideEffects.getProcessCount(dialogId)).toBe(1);  // ← still 1
 
     // Another duplicate → still not executed
-    await adapterA.retryRequest(dialogId, 1, { op: 'work' });
+    await adapterA.retryRequest(dialogId, 1);
     expect(sideEffects.getProcessCount(dialogId)).toBe(1);  // ← still 1
   });
 
@@ -294,7 +294,7 @@ describe('Test 8 — Duplicate-side-effect prevention', () => {
     expect(sideEffects.getProcessCount(dialogId)).toBe(3);
 
     // Retry seq=1 → no new side effect
-    await adapterA.retryRequest(dialogId, 1, { op: '1' });
+    await adapterA.retryRequest(dialogId, 1);
     expect(sideEffects.getProcessCount(dialogId)).toBe(3);  // ← still 3
   });
 });
@@ -308,7 +308,7 @@ describe('Test 9 — Retry preserves dialog_id', () => {
     const dialogId = adapterA.startDialog('task-retry-1');
 
     const resp1 = await adapterA.sendRequest(dialogId, {});
-    const resp2 = await adapterA.retryRequest(dialogId, 1, {});
+    const resp2 = await adapterA.retryRequest(dialogId, 1);
 
     expect(resp1.dialog_id).toBe(dialogId);
     expect(resp2.dialog_id).toBe(dialogId);
@@ -325,7 +325,7 @@ describe('Test 10 — Retry preserves task_id', () => {
     const dialogId = adapterA.startDialog(taskId);
 
     const resp1 = await adapterA.sendRequest(dialogId, {});
-    const resp2 = await adapterA.retryRequest(dialogId, 1, {});
+    const resp2 = await adapterA.retryRequest(dialogId, 1);
 
     expect(resp1.task_id).toBe(taskId);
     expect(resp2.task_id).toBe(taskId);
@@ -341,7 +341,7 @@ describe('Test 11 — Retry preserves seq', () => {
     const dialogId = adapterA.startDialog('task-retry-seq');
 
     const resp1 = await adapterA.sendRequest(dialogId, {});  // seq=1
-    const resp2 = await adapterA.retryRequest(dialogId, 1, {});  // seq=1 again
+    const resp2 = await adapterA.retryRequest(dialogId, 1);  // seq=1 again
 
     expect(resp1.seq).toBe(1);
     expect(resp2.seq).toBe(1);
@@ -351,9 +351,9 @@ describe('Test 11 — Retry preserves seq', () => {
     const dialogId = adapterA.startDialog('task-retry-multi');
 
     const resp1 = await adapterA.sendRequest(dialogId, {});
-    const resp2 = await adapterA.retryRequest(dialogId, 1, {});
-    const resp3 = await adapterA.retryRequest(dialogId, 1, {});
-    const resp4 = await adapterA.retryRequest(dialogId, 1, {});
+    const resp2 = await adapterA.retryRequest(dialogId, 1);
+    const resp3 = await adapterA.retryRequest(dialogId, 1);
+    const resp4 = await adapterA.retryRequest(dialogId, 1);
 
     expect(resp1.seq).toBe(1);
     expect(resp2.seq).toBe(1);
@@ -397,7 +397,7 @@ describe('Test 12 — Deduplication scoping', () => {
     expect(sideEffects.getProcessCount(dialogId2)).toBe(1);
 
     // D1: retry seq=1 → duplicate
-    const retryResp = await adapterA.retryRequest(dialogId1, 1, {});
+    const retryResp = await adapterA.retryRequest(dialogId1, 1);
     expect(retryResp.status).toBe('duplicate');
     expect(sideEffects.getProcessCount(dialogId1)).toBe(1);  // unchanged
 
@@ -432,7 +432,7 @@ describe('Test 13 — Lifecycle transitions', () => {
     const dialog1 = adapterB.getDialogManager().getDialog(dialogId);
     expect(dialog1!.state).toBe('PROCESSING');
 
-    await adapterA.retryRequest(dialogId, 1, {});  // duplicate
+    await adapterA.retryRequest(dialogId, 1);  // duplicate
 
     const dialog2 = adapterB.getDialogManager().getDialog(dialogId);
     expect(dialog2!.state).toBe('PROCESSING');  // unchanged
@@ -526,17 +526,13 @@ describe('Test 16 — Durable deduplication persistence', () => {
       const adapterA2 = new AdapterA(handle2.db, PERSIST_DB, transport2);
       const adapterB2 = new AdapterB(handle2.db, PERSIST_DB, transport2, sideEffects2);
 
-      // Manually recreate dialog state in Adapter A (simulating recovery)
-      // In reality, Adapter A would reload its state on startup
-      const dialogState = {
-        dialog_id: dialogId,
-        task_id: 'task-persist',
-        nextSeq: 2,
-      };
-      (adapterA2 as any).dialogs.set(dialogId, dialogState);
+      // Adapter A rebuilds its state from durable storage
+      const [recovered] = adapterA2.recover();
+      expect(recovered!.dialog_id).toBe(dialogId);
+      expect(recovered!.nextSeq).toBe(2);
 
       // Retry seq=1
-      const resp2 = await adapterA2.retryRequest(dialogId, 1, { data: 'retry' });
+      const resp2 = await adapterA2.retryRequest(dialogId, 1);
 
       // Duplicate detected after restart
       expect(resp2.status).toBe('duplicate');

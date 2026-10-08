@@ -4,20 +4,39 @@
  * Responsibilities:
  *   - Start new dialogs/tasks
  *   - Create dialogs through Dialog Manager
- *   - Generate request sequence numbers
- *   - Build outgoing requests
+ *   - Assign request sequence numbers from durable state
+ *   - Durably log each outgoing request BEFORE sending it
  *   - Send requests through transport
- *   - Receive responses
- *   - Support retries with preserved identifiers
+ *   - Receive responses and mark requests acknowledged
+ *   - Support retries with preserved identifiers AND preserved payload
+ *   - Recover active dialogs/tasks from durable state on startup
  *
  * Adapter A does NOT:
  *   - Manage dialog lifecycle directly (uses Dialog Manager)
  *   - Perform deduplication (Adapter B's responsibility)
  *   - Create new identifiers on retry (preserves dialog_id, task_id, seq)
+ *
+ * Durable state (survives restart):
+ *   dialogs            — dialog_id, task_id, state, restored
+ *   outbound_requests  — (dialog_id, seq), payload, PENDING/ACKED, attempts
+ *
+ * In-memory state (lost on restart, rebuilt by recover()):
+ *   the set of dialogs this instance is actively driving.
+ *
+ * Crash windows:
+ *   - Crash after the PENDING row is written but before/while the transport
+ *     call happens: recover() reports the seq as pending and it is retried
+ *     with the same (dialog_id, seq, payload).  Safe — Adapter B deduplicates
+ *     if it had in fact processed it.
+ *   - Adapter B's window (side effect executed, crash before the processed
+ *     record is persisted) is NOT closed by this log.  See AdapterB.
  */
 
 import type { Database } from 'sql.js';
 import { DialogManager } from '../services/DialogManager.js';
+import { OutboundRequestRepository } from '../repositories/OutboundRequestRepository.js';
+import { NotFoundError } from '../errors.js';
+import type { LifecycleState } from '../types/index.js';
 import type { Transport } from './Transport.js';
 import type { AdapterRequest, AdapterResponse } from './types.js';
 
@@ -30,152 +49,178 @@ export interface Task {
 }
 
 /**
- * Dialog tracking information maintained by Adapter A.
+ * Dialog tracking information exposed by Adapter A.
+ * nextSeq is always derived from durable state.
  */
-interface DialogState {
+export interface DialogState {
   dialog_id: string;
   task_id:   string;
   nextSeq:   number;  // Next sequence number to assign
 }
 
+/**
+ * One dialog rebuilt by recover().
+ */
+export interface RecoveredDialog {
+  dialog_id:   string;
+  task_id:     string;
+  state:       LifecycleState;
+  nextSeq:     number;
+  pendingSeqs: number[];  // sent but never acknowledged — retry these
+}
+
 export class AdapterA {
   private readonly transport:     Transport;
-  private readonly dialogs = new Map<string, DialogState>();  // dialog_id → state
+  private readonly outbound:      OutboundRequestRepository;
+  private readonly dialogs = new Map<string, string>();  // dialog_id → task_id
   public readonly dialogManager: DialogManager;  // Exposed for recovery operations
 
   constructor(db: Database, dbPath: string, transport: Transport) {
     this.dialogManager = new DialogManager(db, dbPath);
+    this.outbound      = new OutboundRequestRepository(db, dbPath);
     this.transport     = transport;
   }
 
   /**
    * Start a new dialog for a task.
    *
-   * Creates the dialog through Dialog Manager.
+   * Creates the dialog through Dialog Manager (state = INITIATED).
    * Generates unique dialog_id.
-   * Initializes sequence tracking.
    *
    * Returns the dialog_id.
    */
   startDialog(taskId: string): string {
-    // Generate unique dialog_id
     const dialogId = this.generateDialogId();
 
-    // Create dialog through Dialog Manager (state = INITIATED)
     this.dialogManager.createDialog(dialogId, taskId);
-
-    // Track dialog state locally
-    this.dialogs.set(dialogId, {
-      dialog_id: dialogId,
-      task_id:   taskId,
-      nextSeq:   1,  // First request will be seq=1
-    });
+    this.dialogs.set(dialogId, taskId);
 
     return dialogId;
   }
 
   /**
-   * Send a request for a dialog.
+   * Send a new request for a dialog.
    *
-   * Generates the next sequence number.
-   * Builds the request.
-   * Sends through transport.
-   * Returns the response.
+   * Assigns seq = (highest durable seq) + 1.
+   * Writes the request as PENDING before handing it to the transport.
+   * Marks it ACKED when Adapter B answers 'ok' or 'duplicate'.
    *
-   * Throws if dialog does not exist locally.
+   * If the transport drops the request or response, the row stays PENDING
+   * and the MessageDroppedError propagates to the caller.
+   *
+   * Throws if this instance is not driving the dialog (call recover()
+   * after a restart).
    */
   async sendRequest(dialogId: string, payload: unknown): Promise<AdapterResponse> {
-    const dialogState = this.dialogs.get(dialogId);
-    if (!dialogState) {
-      throw new Error(`Dialog not found in Adapter A: ${dialogId}`);
-    }
+    const taskId = this.requireLocalDialog(dialogId);
 
-    // Generate sequence number
-    const seq = dialogState.nextSeq;
-    dialogState.nextSeq += 1;
+    const seq = this.outbound.maxSeq(dialogId) + 1;
+    this.outbound.recordPending(dialogId, seq, JSON.stringify(payload ?? null));
 
-    // Build request
-    const request: AdapterRequest = {
-      dialog_id: dialogState.dialog_id,
-      task_id:   dialogState.task_id,
-      seq,
-      payload,
-    };
-
-    // Send through transport
-    const response = await this.transport.sendRequest(request);
-
-    return response;
+    return this.deliver({ dialog_id: dialogId, task_id: taskId, seq, payload });
   }
 
   /**
-   * Retry a request with the same sequence number.
+   * Retry a previously sent request.
    *
-   * Preserves dialog_id, task_id, and seq.
-   * This is the critical retry behavior: same logical request keeps same seq.
+   * Preserves dialog_id, task_id, seq AND payload: the payload is read from
+   * the durable send log, so a retry is always the same logical request.
    *
-   * Throws if dialog does not exist locally.
+   * Throws NotFoundError if (dialog_id, seq) was never sent.
    */
-  async retryRequest(dialogId: string, seq: number, payload: unknown): Promise<AdapterResponse> {
-    const dialogState = this.dialogs.get(dialogId);
-    if (!dialogState) {
-      throw new Error(`Dialog not found in Adapter A: ${dialogId}`);
+  async retryRequest(dialogId: string, seq: number): Promise<AdapterResponse> {
+    const taskId = this.requireLocalDialog(dialogId);
+
+    const logged = this.outbound.findByKey(dialogId, seq);
+    if (logged === null) {
+      throw new NotFoundError('Outbound request', `${dialogId}#${seq}`);
     }
 
-    // Build request with SAME seq (retry)
-    const request: AdapterRequest = {
-      dialog_id: dialogState.dialog_id,
-      task_id:   dialogState.task_id,
-      seq,       // ← SAME seq as original request
-      payload,
-    };
+    this.outbound.incrementAttempts(dialogId, seq);
 
-    // Send through transport
-    const response = await this.transport.sendRequest(request);
-
-    return response;
-  }
-
-  /**
-   * Get the current state of a dialog tracked by Adapter A.
-   */
-  getDialogState(dialogId: string): DialogState | undefined {
-    return this.dialogs.get(dialogId);
-  }
-
-  /**
-   * Reload dialog state for recovery.
-   *
-   * Used when Adapter A restarts and needs to resume an existing dialog.
-   * The dialog must already exist in durable storage (Dialog Manager).
-   *
-   * This simulates Adapter A recovering its state after a restart.
-   */
-  reloadDialog(dialogId: string, taskId: string, nextSeq: number): void {
-    // Verify dialog exists in Dialog Manager
-    const dialog = this.dialogManager.getDialog(dialogId);
-    if (!dialog) {
-      throw new Error(`Cannot reload non-existent dialog: ${dialogId}`);
-    }
-
-    // Verify task identity matches
-    if (dialog.task_id !== taskId) {
-      throw new Error(`Task ID mismatch: expected ${taskId}, got ${dialog.task_id}`);
-    }
-
-    // Restore local state
-    this.dialogs.set(dialogId, {
+    return this.deliver({
       dialog_id: dialogId,
       task_id:   taskId,
-      nextSeq,
+      seq,       // ← SAME seq as original request
+      payload:   JSON.parse(logged.payload),  // ← SAME payload as original
     });
   }
 
   /**
-   * Get all tracked dialog states (for testing/recovery).
+   * Rebuild Adapter A's working state from durable storage after a restart.
+   *
+   * For every active (INITIATED / PROCESSING) dialog:
+   *   - start driving it again in this instance
+   *   - mark it restored
+   *   - derive nextSeq from the send log (never from the caller)
+   *   - report requests that were in flight (PENDING) so they can be retried
+   *
+   * Terminal dialogs are not resumed.
+   */
+  recover(): RecoveredDialog[] {
+    const recovered: RecoveredDialog[] = [];
+
+    for (const dialog of this.dialogManager.getActiveDialogs()) {
+      const restored = this.dialogManager.markRestored(dialog.dialog_id);
+      this.dialogs.set(restored.dialog_id, restored.task_id);
+
+      recovered.push({
+        dialog_id:   restored.dialog_id,
+        task_id:     restored.task_id,
+        state:       restored.state,
+        nextSeq:     this.outbound.maxSeq(restored.dialog_id) + 1,
+        pendingSeqs: this.outbound.findPending(restored.dialog_id).map(r => r.seq),
+      });
+    }
+
+    return recovered;
+  }
+
+  /**
+   * Get the current state of a dialog driven by this Adapter A instance.
+   */
+  getDialogState(dialogId: string): DialogState | undefined {
+    const taskId = this.dialogs.get(dialogId);
+    if (taskId === undefined) return undefined;
+
+    return {
+      dialog_id: dialogId,
+      task_id:   taskId,
+      nextSeq:   this.outbound.maxSeq(dialogId) + 1,
+    };
+  }
+
+  /**
+   * Get all dialog states driven by this instance (for testing/recovery).
    */
   getAllDialogStates(): Map<string, DialogState> {
-    return new Map(this.dialogs);
+    const states = new Map<string, DialogState>();
+    for (const dialogId of this.dialogs.keys()) {
+      states.set(dialogId, this.getDialogState(dialogId)!);
+    }
+    return states;
+  }
+
+  /**
+   * Send through the transport and acknowledge on a definitive answer.
+   * 'error' responses and dropped messages leave the request PENDING.
+   */
+  private async deliver(request: AdapterRequest): Promise<AdapterResponse> {
+    const response = await this.transport.sendRequest(request);
+
+    if (response.status === 'ok' || response.status === 'duplicate') {
+      this.outbound.markAcked(request.dialog_id, request.seq);
+    }
+
+    return response;
+  }
+
+  private requireLocalDialog(dialogId: string): string {
+    const taskId = this.dialogs.get(dialogId);
+    if (taskId === undefined) {
+      throw new Error(`Dialog not found in Adapter A: ${dialogId}`);
+    }
+    return taskId;
   }
 
   /**

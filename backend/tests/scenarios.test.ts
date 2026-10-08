@@ -110,7 +110,7 @@ describe('Scenario 1 — Multiple Dialogs + Retry → Correct Correlation', () =
     expect(sideEffects.getProcessCount(d2)).toBe(0);
 
     // Step 5: Retry the SAME logical request (dialog_id=D2, task_id=T2, seq=1)
-    const retryResponse = await adapterA.retryRequest(d2, 1, { op: 'd2-work' });
+    const retryResponse = await adapterA.retryRequest(d2, 1);
 
     // Step 6-8: Adapter B receives retry, correlates using D2, processes
     expect(retryResponse.status).toBe('ok');
@@ -152,7 +152,7 @@ describe('Scenario 2 — Request Lost → Retry', () => {
     expect(sideEffects.getProcessCount(d1)).toBe(0);
 
     // Step 4-7: Retry the same request (same dialog_id, task_id, seq)
-    const retryResponse = await adapterA.retryRequest(d1, 1, { op: 'work' });
+    const retryResponse = await adapterA.retryRequest(d1, 1);
 
     // Step 8: B receives it, correlates it, processes it, persists
     expect(retryResponse.status).toBe('ok');
@@ -194,7 +194,7 @@ describe('Scenario 3 — Response Lost → Duplicate Request', () => {
 
     // Step 7: A does not receive the response
     // Step 8: A retries the SAME logical request (D1, T1, seq=1)
-    const retryResponse = await adapterA.retryRequest(d1, 1, { op: 'critical-work' });
+    const retryResponse = await adapterA.retryRequest(d1, 1);
 
     // Step 9-12: B receives retry, checks durable state, detects duplicate
     expect(retryResponse.status).toBe('duplicate');
@@ -220,7 +220,7 @@ describe('Scenario 3 — Response Lost → Duplicate Request', () => {
     expect(countAfterFirst).toBe(1);
 
     // Retry
-    const retry = await adapterA.retryRequest(d1, 1, {});
+    const retry = await adapterA.retryRequest(d1, 1);
     expect(retry.status).toBe('duplicate');
 
     const countAfterRetry = sideEffects.getProcessCount(d1);
@@ -231,6 +231,37 @@ describe('Scenario 3 — Response Lost → Duplicate Request', () => {
     // NOT "universal exactly-once delivery"
   });
 });
+
+// ---------------------------------------------------------------------------
+// Restart helpers
+// ---------------------------------------------------------------------------
+//
+// Both mock adapters run in one process and share one sql.js handle, so a
+// "restart" means: drop every in-memory object (adapters, transport, side-
+// effect tracker, database handle) and boot fresh ones from the SQLite FILE.
+// Nothing survives except what was persisted to disk.
+
+interface BootedProcess {
+  handle:      ReturnType<typeof openDatabase>;
+  transport:   Transport;
+  sideEffects: InMemorySideEffectTracker;
+  adapterA:    AdapterA;
+  adapterB:    AdapterB;
+}
+
+function boot(file: string): BootedProcess {
+  const handle      = openDatabase(file, SQL);
+  const transport   = new Transport();
+  const sideEffects = new InMemorySideEffectTracker();
+  const adapterA    = new AdapterA(handle.db, file, transport);
+  const adapterB    = new AdapterB(handle.db, file, transport, sideEffects);
+  return { handle, transport, sideEffects, adapterA, adapterB };
+}
+
+function shutdown(proc: BootedProcess): void {
+  proc.transport.unregisterRequestHandler();
+  closeDatabase(proc.handle.db);
+}
 
 // ===========================================================================
 // SCENARIO 4: Adapter B Restart → Durable State Recovery
@@ -243,71 +274,61 @@ describe('Scenario 4 — Adapter B Restart → Durable State Recovery', () => {
       // =================================================================
       // BEFORE RESTART
       // =================================================================
+      const before = boot(PERSIST_DB);
 
       // Step 1: Create D1/T1
-      const handle1 = openDatabase(PERSIST_DB, SQL);
-      const transport1 = new Transport();
-      const sideEffects1 = new InMemorySideEffectTracker();
-      const adapterA1 = new AdapterA(handle1.db, PERSIST_DB, transport1);
-      const adapterB1 = new AdapterB(handle1.db, PERSIST_DB, transport1, sideEffects1);
+      const d1 = before.adapterA.startDialog('task-scenario4');
 
-      const d1 = adapterA1.startDialog('task-scenario4');
+      // Step 2-3: B processes seq=1, but the response is lost
+      before.transport.dropNextResponseMessage();
+      await expect(
+        before.adapterA.sendRequest(d1, { data: 'before-restart' }),
+      ).rejects.toBeInstanceOf(MessageDroppedError);
+      expect(before.sideEffects.getProcessCount(d1)).toBe(1);
 
-      // Step 2: Send a request
-      const resp1 = await adapterA1.sendRequest(d1, { data: 'before-restart' });
-      expect(resp1.status).toBe('ok');
+      // Step 4: Dialog state and processed request are persisted
+      expect(before.adapterB.getDialogManager().getDialog(d1)!.state).toBe('PROCESSING');
 
-      // Step 3: B processes it
-      expect(sideEffects1.getProcessCount(d1)).toBe(1);
-
-      // Step 4: Ensure dialog/request state is persisted
-      const dialogBefore = adapterB1.getDialogManager().getDialog(d1);
-      expect(dialogBefore).not.toBeNull();
-      expect(dialogBefore!.state).toBe('PROCESSING');
-
-      // Step 5: Simulate Adapter B shutdown/restart
-      transport1.unregisterRequestHandler();
-      closeDatabase(handle1.db);
+      // Step 5: Restart — every in-memory object is discarded
+      shutdown(before);
 
       // =================================================================
       // AFTER RESTART
       // =================================================================
+      const after = boot(PERSIST_DB);
 
-      // Step 6: Create a fresh Adapter B instance using SAME durable SQLite
-      const handle2 = openDatabase(PERSIST_DB, SQL);
-      const transport2 = new Transport();
-      const sideEffects2 = new InMemorySideEffectTracker();
-      const adapterA2 = new AdapterA(handle2.db, PERSIST_DB, transport2);
-      const adapterB2 = new AdapterB(handle2.db, PERSIST_DB, transport2, sideEffects2);
-
-      // Step 7: Reload persisted state (happens automatically via Dialog Manager)
-      const dialogAfter = adapterB2.getDialogManager().getDialog(d1);
-      expect(dialogAfter).not.toBeNull();
-
-      // Expected: D1 still exists
+      // Step 6: Fresh Adapter B sees the same durable dialog
+      const dialogAfter = after.adapterB.getDialogManager().getDialog(d1);
       expect(dialogAfter!.dialog_id).toBe(d1);
-
-      // Expected: T1 still exists
       expect(dialogAfter!.task_id).toBe('task-scenario4');
-
-      // Expected: Lifecycle state is preserved
       expect(dialogAfter!.state).toBe('PROCESSING');
 
-      // Step 8: Recreate Adapter A state (simulating A also reloading)
-      adapterA2.reloadDialog(d1, 'task-scenario4', 2);
+      // Step 7: Adapter A recovers from durable state — no seq supplied
+      const recovered = after.adapterA.recover();
+      expect(recovered).toEqual([
+        {
+          dialog_id:   d1,
+          task_id:     'task-scenario4',
+          state:       'PROCESSING',
+          nextSeq:     2,
+          pendingSeqs: [1],
+        },
+      ]);
 
-      // Send the same request again (retry seq=1)
-      const retryResp = await adapterA2.retryRequest(d1, 1, { data: 'after-restart' });
+      // Step 8: Retry the in-flight seq=1 with its stored payload
+      const retryResp = await after.adapterA.retryRequest(d1, 1);
 
-      // Expected: Processed request (D1,seq=1) is preserved
+      // Expected: B's durable processed record is recognised → duplicate
       expect(retryResp.status).toBe('duplicate');
+      expect(retryResp.result).toMatchObject({ payload: { data: 'before-restart' } });
 
-      // Expected: Retry is recognized as duplicate
-      // Expected: Side effect is NOT executed again
-      expect(sideEffects2.getProcessCount(d1)).toBe(0);  // New tracker starts at 0
+      // Expected: side effect NOT executed again by the restarted B
+      expect(after.sideEffects.getProcessCount(d1)).toBe(0);
 
-      transport2.unregisterRequestHandler();
-      closeDatabase(handle2.db);
+      // Expected: seq=1 is now acknowledged
+      expect(after.adapterA.recover()[0]!.pendingSeqs).toEqual([]);
+
+      shutdown(after);
     } finally {
       if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
     }
@@ -319,93 +340,111 @@ describe('Scenario 4 — Adapter B Restart → Durable State Recovery', () => {
 // ===========================================================================
 
 describe('Scenario 5 — Mid-Task Disconnect + Adapter A Restart → Resume', () => {
-  it('resumes existing task after Adapter A restart with preserved identity', async () => {
-    const PERSIST_DB = tempDbPath('scenario5-persist');
+  /**
+   * Shared "before restart" half: seq 1 and 2 succeed, seq 3 is in flight
+   * when the connection drops and Adapter A goes down.
+   */
+  async function runUntilDisconnect(
+    file: string,
+    drop: 'request' | 'response',
+  ): Promise<{ d1: string; processedBefore: number }> {
+    const before = boot(file);
+    const d1 = before.adapterA.startDialog('task-scenario5');
+
+    expect((await before.adapterA.sendRequest(d1, { step: 1 })).status).toBe('ok');
+    expect((await before.adapterA.sendRequest(d1, { step: 2 })).status).toBe('ok');
+
+    if (drop === 'request') before.transport.dropNextRequestMessage();
+    else                    before.transport.dropNextResponseMessage();
+
+    await expect(
+      before.adapterA.sendRequest(d1, { step: 3 }),
+    ).rejects.toBeInstanceOf(MessageDroppedError);
+
+    const processedBefore = before.sideEffects.getProcessCount(d1);
+    shutdown(before);  // Adapter A crashes mid-task
+    return { d1, processedBefore };
+  }
+
+  it('response lost mid-task: recovers, retries in-flight seq as duplicate, resumes', async () => {
+    const PERSIST_DB = tempDbPath('scenario5-response');
     try {
-      // =================================================================
-      // BEFORE RESTART
-      // =================================================================
+      const { d1, processedBefore } = await runUntilDisconnect(PERSIST_DB, 'response');
+      expect(processedBefore).toBe(3);  // B did process seq=3
 
-      // Step 1: Create D1/T1
-      const handle1 = openDatabase(PERSIST_DB, SQL);
-      const transport1 = new Transport();
-      const sideEffects1 = new InMemorySideEffectTracker();
-      const adapterA1 = new AdapterA(handle1.db, PERSIST_DB, transport1);
-      const adapterB1 = new AdapterB(handle1.db, PERSIST_DB, transport1, sideEffects1);
+      // ---------------- AFTER RESTART ----------------
+      const after = boot(PERSIST_DB);
 
-      const d1 = adapterA1.startDialog('task-scenario5');
+      // Fresh Adapter A knows nothing until it recovers
+      expect(after.adapterA.getDialogState(d1)).toBeUndefined();
 
-      // Step 2: Process first request (seq=1)
-      const resp1 = await adapterA1.sendRequest(d1, { step: 1 });
-      expect(resp1.status).toBe('ok');
-      expect(sideEffects1.getProcessCount(d1)).toBe(1);
+      const [rec] = after.adapterA.recover();
 
-      // Step 3: Continue the dialog to another request (seq=2)
-      const resp2 = await adapterA1.sendRequest(d1, { step: 2 });
-      expect(resp2.status).toBe('ok');
-      expect(sideEffects1.getProcessCount(d1)).toBe(2);
+      // Identity preserved, next seq and in-flight work derived from disk
+      expect(rec!.dialog_id).toBe(d1);
+      expect(rec!.task_id).toBe('task-scenario5');
+      expect(rec!.state).toBe('PROCESSING');
+      expect(rec!.pendingSeqs).toEqual([3]);
+      expect(rec!.nextSeq).toBe(4);
+      expect(after.adapterA.dialogManager.getDialog(d1)!.restored).toBe(true);
 
-      // Save Adapter A state for recovery
-      const stateBefore = adapterA1.getDialogState(d1);
-      expect(stateBefore).toBeDefined();
-      expect(stateBefore!.nextSeq).toBe(3);  // Next would be seq=3
+      // Retry in-flight seq=3 → B already processed it → duplicate
+      const retry3 = await after.adapterA.retryRequest(d1, 3);
+      expect(retry3.status).toBe('duplicate');
+      expect(retry3.result).toMatchObject({ payload: { step: 3 } });
 
-      // Step 4: Simulate Adapter A shutdown/crash
-      transport1.unregisterRequestHandler();
-      closeDatabase(handle1.db);
+      // Already-processed seq=1 stays deduplicated too
+      expect((await after.adapterA.retryRequest(d1, 1)).status).toBe('duplicate');
+      expect(after.sideEffects.getProcessCount(d1)).toBe(0);
 
-      // =================================================================
-      // AFTER RESTART
-      // =================================================================
+      // Continue the SAME task: next request gets seq=4 from durable state
+      const resp4 = await after.adapterA.sendRequest(d1, { step: 4 });
+      expect(resp4.status).toBe('ok');
+      expect(resp4.seq).toBe(4);
+      expect(resp4.dialog_id).toBe(d1);
+      expect(resp4.task_id).toBe('task-scenario5');
+      expect(after.sideEffects.getProcessCount(d1)).toBe(1);
 
-      // Step 5: Create a fresh Adapter A instance
-      const handle2 = openDatabase(PERSIST_DB, SQL);
-      const transport2 = new Transport();
-      const sideEffects2 = new InMemorySideEffectTracker();
-      const adapterA2 = new AdapterA(handle2.db, PERSIST_DB, transport2);
-      const adapterB2 = new AdapterB(handle2.db, PERSIST_DB, transport2, sideEffects2);
+      // No new dialog was created for the task
+      const forTask = after.adapterA.dialogManager
+        .getAllDialogs()
+        .filter(d => d.task_id === 'task-scenario5');
+      expect(forTask).toHaveLength(1);
 
-      // Step 6-7: Load existing dialog/task information from durable storage
-      const dialogRestored = adapterA2.dialogManager.getDialog(d1);
-      expect(dialogRestored).not.toBeNull();
+      shutdown(after);
+    } finally {
+      if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
+    }
+  });
 
-      // Step 8: Resume using SAME dialog_id and task_id
-      adapterA2.reloadDialog(
-        d1,
-        'task-scenario5',
-        3,  // Next seq to use
-      );
+  it('request lost mid-task: recovers, retries in-flight seq as new, resumes', async () => {
+    const PERSIST_DB = tempDbPath('scenario5-request');
+    try {
+      const { d1, processedBefore } = await runUntilDisconnect(PERSIST_DB, 'request');
+      expect(processedBefore).toBe(2);  // seq=3 never reached B
 
-      // Expected: Original dialog_id preserved
-      expect(dialogRestored!.dialog_id).toBe(d1);
+      // ---------------- AFTER RESTART ----------------
+      const after = boot(PERSIST_DB);
+      const [rec] = after.adapterA.recover();
 
-      // Expected: Original task_id preserved
-      expect(dialogRestored!.task_id).toBe('task-scenario5');
+      expect(rec!.dialog_id).toBe(d1);
+      expect(rec!.task_id).toBe('task-scenario5');
+      expect(rec!.pendingSeqs).toEqual([3]);
+      expect(rec!.nextSeq).toBe(4);
 
-      // Expected: Existing durable state loaded
-      expect(dialogRestored!.state).toBe('PROCESSING');
+      // Retry in-flight seq=3 → first time B sees it → processed once
+      const retry3 = await after.adapterA.retryRequest(d1, 3);
+      expect(retry3.status).toBe('ok');
+      expect(retry3.result).toMatchObject({ payload: { step: 3 } });
+      expect(after.sideEffects.getProcessCount(d1)).toBe(1);
 
-      // Step 9: If an already-processed request is retried, deduplication works
-      const retryResp = await adapterA2.retryRequest(d1, 1, { step: 1 });
-      expect(retryResp.status).toBe('duplicate');
+      // Continue with seq=4
+      const resp4 = await after.adapterA.sendRequest(d1, { step: 4 });
+      expect(resp4.status).toBe('ok');
+      expect(resp4.seq).toBe(4);
+      expect(after.sideEffects.getProcessCount(d1)).toBe(2);
 
-      // New side effect tracker starts at 0
-      expect(sideEffects2.getProcessCount(d1)).toBe(0);
-
-      // Step 10: Continue the task with next request (seq=3)
-      const resp3 = await adapterA2.sendRequest(d1, { step: 3 });
-      expect(resp3.status).toBe('ok');
-
-      // Expected: Adapter A does NOT create a new dialog
-      const allDialogs = adapterA2.dialogManager.getAllDialogs();
-      const matchingDialogs = allDialogs.filter(d => d.task_id === 'task-scenario5');
-      expect(matchingDialogs.length).toBe(1);  // Only one dialog for this task
-
-      // Expected: Processing can continue
-      expect(sideEffects2.getProcessCount(d1)).toBe(1);  // seq=3 processed
-
-      transport2.unregisterRequestHandler();
-      closeDatabase(handle2.db);
+      shutdown(after);
     } finally {
       if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
     }

@@ -46,3 +46,25 @@ CREATE TABLE IF NOT EXISTS requests (
 CREATE INDEX IF NOT EXISTS idx_dialogs_active
   ON dialogs (state)
   WHERE state IN ('INITIATED', 'PROCESSING');
+
+-- ---------------------------------------------------------------------------
+-- outbound_requests  (Adapter A's durable send log)
+-- ---------------------------------------------------------------------------
+-- Adapter A writes a request here as PENDING *before* handing it to the
+-- transport, and marks it ACKED once Adapter B answers ('ok' or 'duplicate').
+--
+-- On restart Adapter A rebuilds from this table:
+--   next seq      = MAX(seq) + 1 per dialog
+--   in-flight     = rows still PENDING (retried with the SAME seq + payload)
+--
+-- The stored payload makes a retry the same logical request: the caller
+-- cannot change the payload under an existing (dialog_id, seq).
+CREATE TABLE IF NOT EXISTS outbound_requests (
+  dialog_id  TEXT    NOT NULL REFERENCES dialogs(dialog_id),
+  seq        INTEGER NOT NULL CHECK (seq > 0),
+  payload    TEXT    NOT NULL,          -- JSON string
+  status     TEXT    NOT NULL DEFAULT 'PENDING'
+               CHECK (status IN ('PENDING', 'ACKED')),
+  attempts   INTEGER NOT NULL DEFAULT 1 CHECK (attempts >= 1),
+  PRIMARY KEY (dialog_id, seq)
+);
