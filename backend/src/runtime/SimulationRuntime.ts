@@ -332,6 +332,11 @@ export class SimulationRuntime {
     });
   }
 
+  /** False once close() has been called (used by GET /health). */
+  isOpen(): boolean {
+    return !this.closed;
+  }
+
   /** Release the database handle.  The runtime cannot be used afterwards. */
   close(): void {
     if (this.closed) return;
