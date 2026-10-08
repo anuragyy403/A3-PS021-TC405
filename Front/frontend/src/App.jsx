@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useCorrelationEngine } from './lib/useCorrelationEngine.js';
+import { ENGINE, useEngine } from './api/engine.js';
 import { SCENARIOS } from './lib/constants.js';
+import { Pill } from './components/ui/Glass.jsx';
 import Header from './components/Header.jsx';
 import MetricBar from './components/MetricBar.jsx';
 import PipelineVisualizer from './components/PipelineVisualizer.jsx';
@@ -16,7 +17,7 @@ import ActivityFeed from './components/ActivityFeed.jsx';
  * experiment can never disagree.
  */
 export default function App() {
-  const engine = useCorrelationEngine();
+  const engine = useEngine();
   const [selectedDialogId, setSelectedDialogId] = useState('');
 
   const running = Boolean(engine.simulation.running);
@@ -54,6 +55,22 @@ export default function App() {
       <Header status={status} running={running} onReset={handleReset} />
 
       <main className="mx-auto flex max-w-[1600px] flex-col gap-5 px-5 py-6 lg:px-8">
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
+          {ENGINE === 'backend' ? (
+            <>
+              <Pill tone={engine.connected ? 'good' : 'bad'} pulse={!engine.connected}>
+                {engine.connected ? 'Live backend' : 'Live backend · unreachable'}
+              </Pill>
+              <span>Every number and event below comes from the backend API.</span>
+            </>
+          ) : (
+            <>
+              <Pill tone="warn">Browser simulation</Pill>
+              <span>Nothing below is connected to the backend.</span>
+            </>
+          )}
+        </div>
+
         <MetricBar metrics={engine.metrics} nodes={engine.nodes} />
 
         <PipelineVisualizer
@@ -64,6 +81,7 @@ export default function App() {
           dialogs={engine.dialogs}
           dispatch={engine.dispatch}
           clearBlackholes={engine.clearBlackholes}
+          manualEnabled={ENGINE === 'sim'}
           highlightedTone={activeScenario ? { emerald: 'good', amber: 'warn', sky: 'info', violet: 'duplicate', orange: 'warn' }[activeScenario.tone] : null}
         />
 

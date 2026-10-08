@@ -1,0 +1,1220 @@
+{
+  "epoch": "ep-muzdgs0t-ec8ad0",
+  "events": [
+    {
+      "id": 1,
+      "at": "2026-10-08T10:06:54.174Z",
+      "type": "runtime_reset",
+      "actor": "runtime",
+      "details": {
+        "epoch": "ep-muzdgs0t-ec8ad0"
+      }
+    },
+    {
+      "id": 2,
+      "at": "2026-10-08T10:06:54.188Z",
+      "type": "dialog_created",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED"
+      }
+    },
+    {
+      "id": 3,
+      "at": "2026-10-08T10:06:54.193Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 1,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 4,
+      "at": "2026-10-08T10:06:54.198Z",
+      "type": "request_processed",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 1,
+      "outcome": "ok",
+      "details": {
+        "processed_count": 1,
+        "side_effects_since_boot": 1
+      }
+    },
+    {
+      "id": 5,
+      "at": "2026-10-08T10:06:54.198Z",
+      "type": "state_transition",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 1,
+      "outcome": "PROCESSING",
+      "details": {
+        "from": "INITIATED",
+        "to": "PROCESSING",
+        "reason": "first request processed"
+      }
+    },
+    {
+      "id": 6,
+      "at": "2026-10-08T10:06:54.198Z",
+      "type": "response_delivered",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 1,
+      "outcome": "ok",
+      "details": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": 7,
+      "at": "2026-10-08T10:06:54.199Z",
+      "type": "request_acked",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 1
+    },
+    {
+      "id": 8,
+      "at": "2026-10-08T10:06:54.203Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 2,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 9,
+      "at": "2026-10-08T10:06:54.207Z",
+      "type": "request_processed",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 2,
+      "outcome": "ok",
+      "details": {
+        "processed_count": 2,
+        "side_effects_since_boot": 2
+      }
+    },
+    {
+      "id": 10,
+      "at": "2026-10-08T10:06:54.207Z",
+      "type": "response_dropped",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 2,
+      "details": {
+        "fault": "drop_response",
+        "b_status": "ok"
+      }
+    },
+    {
+      "id": 11,
+      "at": "2026-10-08T10:06:54.212Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 3,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 12,
+      "at": "2026-10-08T10:06:54.213Z",
+      "type": "request_dropped",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "seq": 3,
+      "details": {
+        "fault": "drop_request"
+      }
+    },
+    {
+      "id": 13,
+      "at": "2026-10-08T10:06:54.225Z",
+      "type": "scenario_started",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "title": "Scenario 1 — Multiple Dialogs + Retry → Correct Correlation"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 14,
+      "at": "2026-10-08T10:06:54.225Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "Create two dialogs: D1/T1 and D2/T2",
+        "tone": "head"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 15,
+      "at": "2026-10-08T10:06:54.227Z",
+      "type": "dialog_created",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014225-zoghbe5",
+      "task_id": "s1-rmuzdgs298252-T1",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED"
+      }
+    },
+    {
+      "id": 16,
+      "at": "2026-10-08T10:06:54.229Z",
+      "type": "dialog_created",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED"
+      }
+    },
+    {
+      "id": 17,
+      "at": "2026-10-08T10:06:54.229Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "two distinct dialogs exist",
+        "ok": true,
+        "detail": "dlg-1791454014225-zoghbe5 / dlg-1791454014228-edu55xo"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 18,
+      "at": "2026-10-08T10:06:54.229Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · two distinct dialogs exist — dlg-1791454014225-zoghbe5 / dlg-1791454014228-edu55xo",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 19,
+      "at": "2026-10-08T10:06:54.229Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "Send D2 seq 1 — the request is lost before Adapter B receives it",
+        "tone": "warn"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 20,
+      "at": "2026-10-08T10:06:54.230Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 21,
+      "at": "2026-10-08T10:06:54.230Z",
+      "type": "request_dropped",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "details": {
+        "fault": "drop_request"
+      }
+    },
+    {
+      "id": 22,
+      "at": "2026-10-08T10:06:54.231Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "D2 seq 1 request dropped",
+        "ok": true,
+        "detail": "delivery=request_dropped"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 23,
+      "at": "2026-10-08T10:06:54.231Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · D2 seq 1 request dropped — delivery=request_dropped",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 24,
+      "at": "2026-10-08T10:06:54.231Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "Adapter B never saw it",
+        "ok": true,
+        "detail": "processed_count=0"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 25,
+      "at": "2026-10-08T10:06:54.231Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · Adapter B never saw it — processed_count=0",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 26,
+      "at": "2026-10-08T10:06:54.231Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "Retry the same logical request: D2 / T2 / seq 1",
+        "tone": "info"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 27,
+      "at": "2026-10-08T10:06:54.232Z",
+      "type": "retry_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "details": {
+        "attempts": 2,
+        "send_log_status": "PENDING"
+      }
+    },
+    {
+      "id": 28,
+      "at": "2026-10-08T10:06:54.235Z",
+      "type": "request_processed",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "outcome": "ok",
+      "details": {
+        "processed_count": 1,
+        "side_effects_since_boot": 1
+      }
+    },
+    {
+      "id": 29,
+      "at": "2026-10-08T10:06:54.235Z",
+      "type": "state_transition",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "outcome": "PROCESSING",
+      "details": {
+        "from": "INITIATED",
+        "to": "PROCESSING",
+        "reason": "first request processed"
+      }
+    },
+    {
+      "id": 30,
+      "at": "2026-10-08T10:06:54.235Z",
+      "type": "response_delivered",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1,
+      "outcome": "ok",
+      "details": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": 31,
+      "at": "2026-10-08T10:06:54.236Z",
+      "type": "request_acked",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "seq": 1
+    },
+    {
+      "id": 32,
+      "at": "2026-10-08T10:06:54.236Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "retry processed (original never arrived, so not a duplicate)",
+        "ok": true,
+        "detail": "outcome=ok"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 33,
+      "at": "2026-10-08T10:06:54.236Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · retry processed (original never arrived, so not a duplicate) — outcome=ok",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 34,
+      "at": "2026-10-08T10:06:54.236Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "retry correlated to D2/T2, not D1/T1",
+        "ok": true,
+        "detail": "dialog=D2"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 35,
+      "at": "2026-10-08T10:06:54.236Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · retry correlated to D2/T2, not D1/T1 — dialog=D2",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 36,
+      "at": "2026-10-08T10:06:54.237Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "D2 processed exactly one request",
+        "ok": true,
+        "detail": "processed_count=1"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 37,
+      "at": "2026-10-08T10:06:54.237Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · D2 processed exactly one request — processed_count=1",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 38,
+      "at": "2026-10-08T10:06:54.238Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "D1 untouched",
+        "ok": true,
+        "detail": "processed_count=0"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 39,
+      "at": "2026-10-08T10:06:54.238Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · D1 untouched — processed_count=0",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 40,
+      "at": "2026-10-08T10:06:54.238Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "Adapter A completes D2",
+        "tone": "info"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 41,
+      "at": "2026-10-08T10:06:54.239Z",
+      "type": "state_transition",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "outcome": "COMMITTED",
+      "details": {
+        "from": "PROCESSING",
+        "to": "COMMITTED",
+        "reason": "completeDialog"
+      }
+    },
+    {
+      "id": 42,
+      "at": "2026-10-08T10:06:54.240Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "D2 COMMITTED",
+        "ok": true,
+        "detail": "state=COMMITTED"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 43,
+      "at": "2026-10-08T10:06:54.240Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · D2 COMMITTED — state=COMMITTED",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 44,
+      "at": "2026-10-08T10:06:54.240Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "label": "D1 stays INITIATED",
+        "ok": true,
+        "detail": "state=INITIATED"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 45,
+      "at": "2026-10-08T10:06:54.240Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "text": "PASS · D1 stays INITIATED — state=INITIATED",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 46,
+      "at": "2026-10-08T10:06:54.240Z",
+      "type": "scenario_finished",
+      "outcome": "passed",
+      "details": {
+        "scenario_id": 1,
+        "run_id": "rmuzdgs298252",
+        "status": "passed",
+        "duration_ms": 15
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 47,
+      "at": "2026-10-08T10:06:54.253Z",
+      "type": "scenario_started",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "title": "Scenario 4 — Adapter B Restart → Durable State Recovery"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 48,
+      "at": "2026-10-08T10:06:54.253Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "Create D1/T1",
+        "tone": "head"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 49,
+      "at": "2026-10-08T10:06:54.254Z",
+      "type": "dialog_created",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED"
+      }
+    },
+    {
+      "id": 50,
+      "at": "2026-10-08T10:06:54.255Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "Send seq 1 — B processes it, the response is lost",
+        "tone": "warn"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 51,
+      "at": "2026-10-08T10:06:54.255Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 52,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "request_processed",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "outcome": "ok",
+      "details": {
+        "processed_count": 1,
+        "side_effects_since_boot": 1
+      }
+    },
+    {
+      "id": 53,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "state_transition",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "outcome": "PROCESSING",
+      "details": {
+        "from": "INITIATED",
+        "to": "PROCESSING",
+        "reason": "first request processed"
+      }
+    },
+    {
+      "id": 54,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "response_dropped",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "details": {
+        "fault": "drop_response",
+        "b_status": "ok"
+      }
+    },
+    {
+      "id": 55,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "B processed seq 1",
+        "ok": true,
+        "detail": "processed_count=1"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 56,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · B processed seq 1 — processed_count=1",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 57,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "dialog PROCESSING before restart",
+        "ok": true,
+        "detail": "state=PROCESSING"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 58,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · dialog PROCESSING before restart — state=PROCESSING",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 59,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "Restart Adapter B (process restart: reopen the SQLite file)",
+        "tone": "warn"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 60,
+      "at": "2026-10-08T10:06:54.258Z",
+      "type": "adapter_restarted",
+      "actor": "runtime",
+      "details": {
+        "target": "B",
+        "scope": "process",
+        "note": "shared store: both adapter objects rebuilt from the SQLite file",
+        "phase": "begin"
+      }
+    },
+    {
+      "id": 61,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "dialog_recovered",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "outcome": "PROCESSING",
+      "details": {
+        "state": "PROCESSING",
+        "next_seq": 4,
+        "pending_seqs": [
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "id": 62,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "dialog_recovered",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014225-zoghbe5",
+      "task_id": "s1-rmuzdgs298252-T1",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED",
+        "next_seq": 1,
+        "pending_seqs": []
+      }
+    },
+    {
+      "id": 63,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "dialog_recovered",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "outcome": "PROCESSING",
+      "details": {
+        "state": "PROCESSING",
+        "next_seq": 2,
+        "pending_seqs": [
+          1
+        ]
+      }
+    },
+    {
+      "id": 64,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "adapter_restarted",
+      "actor": "runtime",
+      "details": {
+        "target": "B",
+        "scope": "process",
+        "note": "shared store: both adapter objects rebuilt from the SQLite file",
+        "phase": "end"
+      }
+    },
+    {
+      "id": 65,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "D1/T1 reloaded from the file",
+        "ok": true,
+        "detail": "task=T1, state=PROCESSING"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 66,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · D1/T1 reloaded from the file — task=T1, state=PROCESSING",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 67,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "next_seq derived from durable state",
+        "ok": true,
+        "detail": "next_seq=2"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 68,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · next_seq derived from durable state — next_seq=2",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 69,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "seq 1 reported as in flight",
+        "ok": true,
+        "detail": "pending=[1]"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 70,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · seq 1 reported as in flight — pending=[1]",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 71,
+      "at": "2026-10-08T10:06:54.262Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "Retry the in-flight seq 1 with its stored payload",
+        "tone": "info"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 72,
+      "at": "2026-10-08T10:06:54.263Z",
+      "type": "retry_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "details": {
+        "attempts": 2,
+        "send_log_status": "PENDING"
+      }
+    },
+    {
+      "id": 73,
+      "at": "2026-10-08T10:06:54.264Z",
+      "type": "duplicate_suppressed",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "outcome": "duplicate",
+      "details": {
+        "terminal": false
+      }
+    },
+    {
+      "id": 74,
+      "at": "2026-10-08T10:06:54.264Z",
+      "type": "response_delivered",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1,
+      "outcome": "duplicate",
+      "details": {
+        "status": "duplicate"
+      }
+    },
+    {
+      "id": 75,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "request_acked",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "seq": 1
+    },
+    {
+      "id": 76,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "retry recognised as duplicate after restart",
+        "ok": true,
+        "detail": "outcome=duplicate"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 77,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · retry recognised as duplicate after restart — outcome=duplicate",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 78,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "stored result returned",
+        "ok": true,
+        "detail": "payload.data=before-restart"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 79,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · stored result returned — payload.data=before-restart",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 80,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "restarted B ran no side effect",
+        "ok": true,
+        "detail": "side_effects_since_boot=0"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 81,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · restarted B ran no side effect — side_effects_since_boot=0",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 82,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "seq 1 now acknowledged",
+        "ok": true,
+        "detail": "pending=[]"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 83,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · seq 1 now acknowledged — pending=[]",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 84,
+      "at": "2026-10-08T10:06:54.265Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "Adapter A completes the task",
+        "tone": "info"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 85,
+      "at": "2026-10-08T10:06:54.266Z",
+      "type": "state_transition",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "outcome": "RECOVERED",
+      "details": {
+        "from": "PROCESSING",
+        "to": "RECOVERED",
+        "reason": "completeDialog"
+      }
+    },
+    {
+      "id": 86,
+      "at": "2026-10-08T10:06:54.266Z",
+      "type": "scenario_assertion",
+      "outcome": "ok",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "label": "dialog RECOVERED",
+        "ok": true,
+        "detail": "state=RECOVERED, restored=true"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 87,
+      "at": "2026-10-08T10:06:54.266Z",
+      "type": "scenario_step",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "text": "PASS · dialog RECOVERED — state=RECOVERED, restored=true",
+        "tone": "pass"
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 88,
+      "at": "2026-10-08T10:06:54.266Z",
+      "type": "scenario_finished",
+      "outcome": "passed",
+      "details": {
+        "scenario_id": 4,
+        "run_id": "rmuzdgs315a6b",
+        "status": "passed",
+        "duration_ms": 13
+      },
+      "actor": "scenario"
+    },
+    {
+      "id": 89,
+      "at": "2026-10-08T10:06:54.271Z",
+      "type": "dialog_created",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "outcome": "INITIATED",
+      "details": {
+        "state": "INITIATED"
+      }
+    },
+    {
+      "id": 90,
+      "at": "2026-10-08T10:06:54.274Z",
+      "type": "request_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "seq": 1,
+      "details": {
+        "attempts": 1
+      }
+    },
+    {
+      "id": 91,
+      "at": "2026-10-08T10:06:54.275Z",
+      "type": "request_dropped",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "seq": 1,
+      "details": {
+        "fault": "drop_request"
+      }
+    },
+    {
+      "id": 92,
+      "at": "2026-10-08T10:06:54.278Z",
+      "type": "state_transition",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "outcome": "FAILED",
+      "details": {
+        "from": "INITIATED",
+        "to": "FAILED",
+        "reason": "failDialog: fixture abort"
+      }
+    },
+    {
+      "id": 93,
+      "at": "2026-10-08T10:06:54.282Z",
+      "type": "retry_sent",
+      "actor": "A",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "seq": 1,
+      "details": {
+        "attempts": 2,
+        "send_log_status": "PENDING"
+      }
+    },
+    {
+      "id": 94,
+      "at": "2026-10-08T10:06:54.283Z",
+      "type": "request_rejected",
+      "actor": "B",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "seq": 1,
+      "outcome": "rejected",
+      "details": {
+        "error_code": "DIALOG_TERMINAL",
+        "error": "Dialog dlg-1791454014270-gk5h3hg is in terminal state FAILED and cannot accept new requests"
+      }
+    },
+    {
+      "id": 95,
+      "at": "2026-10-08T10:06:54.283Z",
+      "type": "response_delivered",
+      "actor": "transport",
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "seq": 1,
+      "outcome": "error",
+      "details": {
+        "status": "error"
+      }
+    }
+  ],
+  "cursor": 95,
+  "oldest_available": 1,
+  "truncated": false
+}

@@ -1,0 +1,84 @@
+{
+  "dialog": {
+    "dialog_id": "dlg-1791454014184-q0ex6zb",
+    "task_id": "task-fixture",
+    "state": "PROCESSING",
+    "restored": false,
+    "terminal": false,
+    "next_seq": 4,
+    "processed_count": 2,
+    "pending_seqs": [
+      2,
+      3
+    ],
+    "side_effects_since_boot": 2,
+    "duplicates_since_boot": 0
+  },
+  "processed": [
+    {
+      "seq": 1,
+      "processed_at": "2026-10-08T10:06:54.195Z",
+      "result": {
+        "processed": true,
+        "payload": {
+          "step": 1
+        },
+        "timestamp": "2026-10-08T10:06:54.195Z"
+      }
+    },
+    {
+      "seq": 2,
+      "processed_at": "2026-10-08T10:06:54.205Z",
+      "result": {
+        "processed": true,
+        "payload": {
+          "step": 2
+        },
+        "timestamp": "2026-10-08T10:06:54.205Z"
+      }
+    }
+  ],
+  "send_log": [
+    {
+      "seq": 1,
+      "payload": {
+        "step": 1
+      },
+      "status": "ACKED",
+      "attempts": 1
+    },
+    {
+      "seq": 2,
+      "payload": {
+        "step": 2
+      },
+      "status": "PENDING",
+      "attempts": 1
+    },
+    {
+      "seq": 3,
+      "payload": {
+        "step": 3
+      },
+      "status": "PENDING",
+      "attempts": 1
+    }
+  ],
+  "ledger": [
+    {
+      "seq": 1,
+      "attempts": 1,
+      "status": "acked"
+    },
+    {
+      "seq": 2,
+      "attempts": 1,
+      "status": "processed_unacked"
+    },
+    {
+      "seq": 3,
+      "attempts": 1,
+      "status": "pending_unprocessed"
+    }
+  ]
+}
