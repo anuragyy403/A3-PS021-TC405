@@ -266,7 +266,7 @@ describe('AdapterA.recover()', () => {
     const done   = before.adapterA.startDialog('T-done');
     const active = before.adapterA.startDialog('T-active');
     await before.adapterA.sendRequest(done, {});
-    before.adapterB.completeDialog(done);  // PROCESSING → COMMITTED
+    before.adapterA.completeDialog(done);  // PROCESSING → COMMITTED
     shutdown(before);
 
     const after = boot(dbPath);

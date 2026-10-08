@@ -8,6 +8,11 @@
  *   4. Adapter B Restart → Durable State Recovery
  *   5. Mid-Task Disconnect + Adapter A Restart → Resume
  *
+ * Every scenario ends in a meaningful lifecycle state, completed by
+ * Adapter A (Phase 3b):
+ *   1–3  → COMMITTED  (no restart)
+ *   4–5  → RECOVERED  (completed after restart + recover())
+ *
  * Each scenario exercises REAL backend components:
  *   - Adapter A / Adapter B
  *   - Transport (with failure simulation)
@@ -123,6 +128,13 @@ describe('Scenario 1 — Multiple Dialogs + Retry → Correct Correlation', () =
 
     // Retry is NOT classified as duplicate (original never reached B)
     expect(retryResponse.status).toBe('ok');
+
+    // Step 9: Adapter A completes D2; D1 was never touched
+    expect(adapterA.completeDialog(d2).state).toBe('COMMITTED');
+
+    const dm = adapterB.getDialogManager();
+    expect(dm.getDialog(d2)).toMatchObject({ task_id: 'task-2', state: 'COMMITTED', restored: false });
+    expect(dm.getDialog(d1)).toMatchObject({ task_id: 'task-1', state: 'INITIATED', restored: false });
   });
 });
 
@@ -164,6 +176,10 @@ describe('Scenario 2 — Request Lost → Retry', () => {
     // Request becomes durably recorded
     const dialog = adapterB.getDialogManager().getDialog(d1);
     expect(dialog!.state).toBe('PROCESSING');
+
+    // Step 9: Task done, no restart → COMMITTED
+    expect(adapterA.completeDialog(d1)).toMatchObject({ state: 'COMMITTED', restored: false });
+    expect(sideEffects.getProcessCount(d1)).toBe(1);
   });
 });
 
@@ -205,6 +221,10 @@ describe('Scenario 3 — Response Lost → Duplicate Request', () => {
 
     // Critical assertion: duplicate-side-effect prevention
     // Side effect count: before=0, first=1, retry=still 1
+
+    // Step 14: The duplicate answer acknowledged seq=1, so the task can complete
+    expect(adapterA.completeDialog(d1)).toMatchObject({ state: 'COMMITTED', restored: false });
+    expect(sideEffects.getProcessCount(d1)).toBe(1);
   });
 
   it('demonstrates duplicate-side-effect prevention terminology', async () => {
@@ -328,6 +348,14 @@ describe('Scenario 4 — Adapter B Restart → Durable State Recovery', () => {
       // Expected: seq=1 is now acknowledged
       expect(after.adapterA.recover()[0]!.pendingSeqs).toEqual([]);
 
+      // Step 9: Task completed after a restart → RECOVERED
+      expect(after.adapterA.completeDialog(d1)).toMatchObject({
+        dialog_id: d1,
+        task_id:   'task-scenario4',
+        state:     'RECOVERED',
+        restored:  true,
+      });
+
       shutdown(after);
     } finally {
       if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
@@ -411,6 +439,14 @@ describe('Scenario 5 — Mid-Task Disconnect + Adapter A Restart → Resume', ()
         .filter(d => d.task_id === 'task-scenario5');
       expect(forTask).toHaveLength(1);
 
+      // Task completed after Adapter A restart → RECOVERED
+      expect(after.adapterA.completeDialog(d1)).toMatchObject({
+        dialog_id: d1,
+        task_id:   'task-scenario5',
+        state:     'RECOVERED',
+        restored:  true,
+      });
+
       shutdown(after);
     } finally {
       if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
@@ -444,6 +480,12 @@ describe('Scenario 5 — Mid-Task Disconnect + Adapter A Restart → Resume', ()
       expect(resp4.seq).toBe(4);
       expect(after.sideEffects.getProcessCount(d1)).toBe(2);
 
+      // Task completed after Adapter A restart → RECOVERED
+      expect(after.adapterA.completeDialog(d1)).toMatchObject({
+        state:    'RECOVERED',
+        restored: true,
+      });
+
       shutdown(after);
     } finally {
       if (fs.existsSync(PERSIST_DB)) fs.unlinkSync(PERSIST_DB);
@@ -463,28 +505,33 @@ describe('Summary — All Five Scenarios', () => {
     // - Multiple dialogs can coexist
     // - Retry is correlated to correct dialog
     // - Lost request vs. duplicate request distinction
+    // - D2 ends COMMITTED, untouched D1 stays INITIATED
 
     // Scenario 2: Request lost before processing
     // - Request never creates processed record
     // - Retry is new from B's perspective
     // - Side effect executes once
+    // - Ends COMMITTED
 
     // Scenario 3: Response lost after processing (R4)
     // - Durable deduplication prevents duplicate side effect
     // - Stored result returned
     // - Observable: side effect count remains 1
+    // - Ends COMMITTED
 
     // Scenario 4: Adapter B restart (R3 for receiving adapter)
     // - Dialog identity preserved across restart
     // - Task identity preserved across restart
     // - Deduplication state survives restart
     // - Durable SQLite recovery
+    // - Ends RECOVERED
 
     // Scenario 5: Adapter A restart (R3 for sending adapter)
     // - Dialog identity preserved
     // - Task identity preserved
     // - Task continues (not restarted)
     // - Same dialog_id/task_id reused
+    // - Ends RECOVERED
 
     // All scenarios use REAL components:
     // ✅ Adapter A / Adapter B

@@ -30,10 +30,26 @@ export interface AdapterRequest {
  * Contains identifiers to correlate the response back to the request.
  */
 export interface AdapterResponse {
-  dialog_id: string;
-  task_id:   string;
-  seq:       number;
-  status:    'ok' | 'duplicate' | 'error';
-  result:    unknown;  // Result of processing (or stored duplicate result)
-  error?:    string;   // Error message if status is 'error'
+  dialog_id:   string;
+  task_id:     string;
+  seq:         number;
+  status:      'ok' | 'duplicate' | 'error';
+  result:      unknown;           // Result of processing (or stored duplicate result)
+  error?:      string;            // Error message if status is 'error'
+  error_code?: AdapterErrorCode;  // Machine-readable reason, set on every 'error'
 }
+
+/**
+ * Why Adapter B rejected a request.
+ *
+ *   DIALOG_NOT_FOUND — no dialog with this dialog_id
+ *   TASK_MISMATCH    — dialog exists but task_id differs from the stored one
+ *   DIALOG_TERMINAL  — dialog is COMMITTED / RECOVERED / FAILED and the
+ *                      (dialog_id, seq) was never processed
+ *   INTERNAL         — any other failure
+ */
+export type AdapterErrorCode =
+  | 'DIALOG_NOT_FOUND'
+  | 'TASK_MISMATCH'
+  | 'DIALOG_TERMINAL'
+  | 'INTERNAL';

@@ -446,7 +446,7 @@ describe('Test 13 — Lifecycle transitions', () => {
     const dialog1 = adapterB.getDialogManager().getDialog(dialogId);
     expect(dialog1!.state).toBe('PROCESSING');
 
-    adapterB.completeDialog(dialogId);
+    adapterA.completeDialog(dialogId);  // Adapter A owns completion
 
     const dialog2 = adapterB.getDialogManager().getDialog(dialogId);
     expect(dialog2!.state).toBe('COMMITTED');

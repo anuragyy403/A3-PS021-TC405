@@ -33,6 +33,7 @@ import {
   NotFoundError,
   InvalidTransitionError,
   ConflictError,
+  TaskMismatchError,
 } from '../errors.js';
 
 export class DialogManager {
@@ -127,7 +128,8 @@ export class DialogManager {
    * Verifies that task_id matches (task identity must not change).
    *
    * Throws NotFoundError if dialog_id does not exist.
-   * Throws ValidationError if task_id does not match the stored task_id.
+   * Throws TaskMismatchError (a ConflictError) if task_id does not match the
+   * stored task_id.
    *
    * Returns the existing dialog record.
    *
@@ -139,10 +141,7 @@ export class DialogManager {
 
     // Verify task identity has not changed
     if (dialog.task_id !== taskId) {
-      throw new ConflictError(
-        'Task identity mismatch',
-        `dialog ${dialogId}: expected task ${dialog.task_id}, got ${taskId}`,
-      );
+      throw new TaskMismatchError(dialogId, dialog.task_id, taskId);
     }
 
     return dialog;

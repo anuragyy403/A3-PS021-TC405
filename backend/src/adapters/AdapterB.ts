@@ -9,20 +9,31 @@
  *   - Process requests (mock side effect)
  *   - Record processed requests (durable deduplication)
  *   - Return responses
- *   - Transition dialog lifecycle states
+ *   - Transition dialog lifecycle states (INITIATED → PROCESSING only)
+ *   - Reject new work for terminal dialogs (idempotent replay still allowed)
  *
  * Adapter B does NOT:
  *   - Create its own lifecycle state machine (uses Dialog Manager)
  *   - Maintain in-memory deduplication (uses durable Request Repository)
  *   - Re-execute side effects for duplicate requests
+ *   - Decide when a task is complete (Adapter A owns completion / failure)
  */
 
 import type { Database } from 'sql.js';
 import { DialogManager } from '../services/DialogManager.js';
 import { RequestRepository } from '../repositories/RequestRepository.js';
 import type { Transport } from './Transport.js';
-import type { AdapterRequest, AdapterResponse } from './types.js';
-import { NotFoundError, ConflictError } from '../errors.js';
+import type { AdapterErrorCode, AdapterRequest, AdapterResponse } from './types.js';
+import { isTerminal } from '../types/index.js';
+import { NotFoundError, TaskMismatchError, DialogTerminalError } from '../errors.js';
+
+/** Map an error raised while handling a request to its response error_code. */
+function errorCodeFor(error: unknown): AdapterErrorCode {
+  if (error instanceof NotFoundError)       return 'DIALOG_NOT_FOUND';
+  if (error instanceof TaskMismatchError)   return 'TASK_MISMATCH';
+  if (error instanceof DialogTerminalError) return 'DIALOG_TERMINAL';
+  return 'INTERNAL';
+}
 
 /**
  * Mock side effect counter for testing duplicate-side-effect prevention.
@@ -80,20 +91,21 @@ export class AdapterB {
   /**
    * Handle an incoming request from Adapter A.
    *
-   * Flow:
-   *   1. Correlate to existing dialog (Dialog Manager)
-   *   2. Verify task identity
-   *   3. Check if (dialog_id, seq) was already processed (Request Repository)
-   *   4. If duplicate: return stored result, do NOT re-execute side effect
-   *   5. If new: execute mock side effect, record request, return result
-   *   6. Transition dialog state as appropriate
+   * Flow (order matters):
+   *   1. Correlate to existing dialog and verify task identity (Dialog Manager)
+   *   2. If (dialog_id, seq) was already processed: return the stored result
+   *      as 'duplicate' — even when the dialog is terminal (idempotent replay)
+   *   3. If the dialog is terminal: reject with DIALOG_TERMINAL — no side
+   *      effect, no processed record, no transition
+   *   4. Otherwise: execute mock side effect, record request, return result
+   *   5. First processed request moves INITIATED → PROCESSING
    */
   private async handleRequest(request: AdapterRequest): Promise<AdapterResponse> {
     try {
-      // Step 1 & 2: Correlate and verify task identity
+      // Step 1: Correlate and verify task identity
       const dialog = this.dialogManager.correlate(request.dialog_id, request.task_id);
 
-      // Step 3: Check for duplicate
+      // Step 2: Check for duplicate
       const existing = this.requestRepo.findByKey(request.dialog_id, request.seq);
 
       if (existing !== null) {
@@ -107,10 +119,21 @@ export class AdapterB {
         };
       }
 
+      // Step 3: A finished dialog accepts no new work
+      if (isTerminal(dialog.state)) {
+        throw new DialogTerminalError(dialog.dialog_id, dialog.state);
+      }
+
       // Step 4: New request — execute mock side effect
+      //
+      // Crash window: the side effect runs BEFORE the processed record below
+      // is persisted.  A crash between the two means a retry will execute the
+      // side effect again.  This is a known, documented limitation — the
+      // guarantee is duplicate-side-effect prevention only once the original
+      // request has been durably recorded as processed, not exactly-once.
       const result = this.executeMockSideEffect(request.dialog_id, request.payload);
 
-      // Step 5: Record request as processed (durable deduplication)
+      // Record request as processed (durable deduplication)
       const recorded = this.requestRepo.record({
         dialog_id:    request.dialog_id,
         seq:          request.seq,
@@ -131,7 +154,7 @@ export class AdapterB {
         };
       }
 
-      // Step 6: Transition dialog state
+      // Step 5: Transition dialog state
       // First request: INITIATED → PROCESSING
       if (dialog.state === 'INITIATED') {
         this.dialogManager.transition(request.dialog_id, 'PROCESSING');
@@ -147,14 +170,15 @@ export class AdapterB {
       };
 
     } catch (error) {
-      // Handle errors (dialog not found, task identity mismatch, etc.)
+      // Dialog not found, task identity mismatch, terminal dialog, etc.
       return {
-        dialog_id: request.dialog_id,
-        task_id:   request.task_id,
-        seq:       request.seq,
-        status:    'error',
-        result:    null,
-        error:     error instanceof Error ? error.message : String(error),
+        dialog_id:  request.dialog_id,
+        task_id:    request.task_id,
+        seq:        request.seq,
+        status:     'error',
+        result:     null,
+        error:      error instanceof Error ? error.message : String(error),
+        error_code: errorCodeFor(error),
       };
     }
   }
@@ -178,16 +202,6 @@ export class AdapterB {
       payload,
       timestamp: new Date().toISOString(),
     };
-  }
-
-  /**
-   * Complete a dialog (transition to COMMITTED).
-   *
-   * This would typically be called after all requests for a dialog are processed.
-   * For testing purposes, we expose this as a public method.
-   */
-  completeDialog(dialogId: string): void {
-    this.dialogManager.transition(dialogId, 'COMMITTED');
   }
 
   /**

@@ -10,6 +10,9 @@
  *   - Receive responses and mark requests acknowledged
  *   - Support retries with preserved identifiers AND preserved payload
  *   - Recover active dialogs/tasks from durable state on startup
+ *   - Own task completion: COMMITTED, or RECOVERED after a restart
+ *   - Fail a dialog when a request exhausts its retry budget, or on abort
+ *   - Refuse new requests for terminal dialogs
  *
  * Adapter A does NOT:
  *   - Manage dialog lifecycle directly (uses Dialog Manager)
@@ -35,8 +38,11 @@
 import type { Database } from 'sql.js';
 import { DialogManager } from '../services/DialogManager.js';
 import { OutboundRequestRepository } from '../repositories/OutboundRequestRepository.js';
-import { NotFoundError } from '../errors.js';
-import type { LifecycleState } from '../types/index.js';
+import { ConflictError, DialogTerminalError, NotFoundError } from '../errors.js';
+import { logger } from '../logger.js';
+import { isTerminal } from '../types/index.js';
+import type { DialogRecord, LifecycleState } from '../types/index.js';
+import { MessageDroppedError } from './Transport.js';
 import type { Transport } from './Transport.js';
 import type { AdapterRequest, AdapterResponse } from './types.js';
 
@@ -69,16 +75,40 @@ export interface RecoveredDialog {
   pendingSeqs: number[];  // sent but never acknowledged — retry these
 }
 
+/**
+ * Tuning for Adapter A.
+ *
+ * maxAttempts: how many times one (dialog_id, seq) may go unanswered before
+ *              the dialog is moved to FAILED.  Default DEFAULT_MAX_ATTEMPTS.
+ */
+export interface AdapterAOptions {
+  maxAttempts?: number;
+}
+
+export const DEFAULT_MAX_ATTEMPTS = 5;
+
 export class AdapterA {
   private readonly transport:     Transport;
   private readonly outbound:      OutboundRequestRepository;
+  private readonly maxAttempts:   number;
   private readonly dialogs = new Map<string, string>();  // dialog_id → task_id
   public readonly dialogManager: DialogManager;  // Exposed for recovery operations
 
-  constructor(db: Database, dbPath: string, transport: Transport) {
+  constructor(
+    db: Database,
+    dbPath: string,
+    transport: Transport,
+    options: AdapterAOptions = {},
+  ) {
+    const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+      throw new RangeError(`maxAttempts must be a positive integer, got ${maxAttempts}`);
+    }
+
     this.dialogManager = new DialogManager(db, dbPath);
     this.outbound      = new OutboundRequestRepository(db, dbPath);
     this.transport     = transport;
+    this.maxAttempts   = maxAttempts;
   }
 
   /**
@@ -108,10 +138,17 @@ export class AdapterA {
    * If the transport drops the request or response, the row stays PENDING
    * and the MessageDroppedError propagates to the caller.
    *
+   * Throws DialogTerminalError if the dialog is COMMITTED / RECOVERED /
+   * FAILED — before any seq is assigned or PENDING row written.
    * Throws if this instance is not driving the dialog (call recover()
    * after a restart).
    */
   async sendRequest(dialogId: string, payload: unknown): Promise<AdapterResponse> {
+    const durable = this.dialogManager.getDialog(dialogId);
+    if (durable !== null && isTerminal(durable.state)) {
+      throw new DialogTerminalError(dialogId, durable.state);
+    }
+
     const taskId = this.requireLocalDialog(dialogId);
 
     const seq = this.outbound.maxSeq(dialogId) + 1;
@@ -126,10 +163,16 @@ export class AdapterA {
    * Preserves dialog_id, task_id, seq AND payload: the payload is read from
    * the durable send log, so a retry is always the same logical request.
    *
+   * On a terminal dialog only seqs already in the send log can be retried
+   * (idempotent replay); the dialog state is never changed by such a retry.
+   *
    * Throws NotFoundError if (dialog_id, seq) was never sent.
    */
   async retryRequest(dialogId: string, seq: number): Promise<AdapterResponse> {
-    const taskId = this.requireLocalDialog(dialogId);
+    const durable = this.dialogManager.getDialog(dialogId);
+    const taskId  = durable !== null && isTerminal(durable.state)
+      ? durable.task_id                     // replay for a finished dialog
+      : this.requireLocalDialog(dialogId);  // active dialog: must be driven here
 
     const logged = this.outbound.findByKey(dialogId, seq);
     if (logged === null) {
@@ -144,6 +187,55 @@ export class AdapterA {
       seq,       // ← SAME seq as original request
       payload:   JSON.parse(logged.payload),  // ← SAME payload as original
     });
+  }
+
+  /**
+   * Complete the task carried by a dialog.
+   *
+   * Adapter A owns completion because it is the side that knows the task is
+   * done.  Outcome:
+   *   restored = false → COMMITTED  (finished without a restart)
+   *   restored = true  → RECOVERED  (finished after restart + recover())
+   *
+   * Throws if this instance is not driving the dialog.
+   * Throws ConflictError if any request is still PENDING (unanswered).
+   * Throws InvalidTransitionError unless the dialog is PROCESSING.
+   */
+  completeDialog(dialogId: string): DialogRecord {
+    this.requireLocalDialog(dialogId);
+
+    const pending = this.outbound.findPending(dialogId).map(r => r.seq);
+    if (pending.length > 0) {
+      throw new ConflictError(
+        'Dialog',
+        dialogId,
+        `Cannot complete dialog ${dialogId}: request(s) seq ${pending.join(', ')} still unanswered`,
+      );
+    }
+
+    const dialog    = this.dialogManager.requireDialog(dialogId);
+    const completed = dialog.restored
+      ? this.dialogManager.transitionToRecovered(dialogId)
+      : this.dialogManager.transition(dialogId, 'COMMITTED');
+
+    this.dialogs.delete(dialogId);
+    return completed;
+  }
+
+  /**
+   * Explicitly abort a dialog (INITIATED / PROCESSING → FAILED).
+   *
+   * The reason is logged only; it is not persisted.
+   * Throws if this instance is not driving the dialog.
+   */
+  failDialog(dialogId: string, reason: string): DialogRecord {
+    this.requireLocalDialog(dialogId);
+
+    const failed = this.dialogManager.transition(dialogId, 'FAILED');
+    this.dialogs.delete(dialogId);
+    logger.warn('dialog failed', { dialog_id: dialogId, task_id: failed.task_id, reason });
+
+    return failed;
   }
 
   /**
@@ -204,15 +296,49 @@ export class AdapterA {
   /**
    * Send through the transport and acknowledge on a definitive answer.
    * 'error' responses and dropped messages leave the request PENDING.
+   *
+   * A dropped message (no answer at all) may exhaust the retry budget and
+   * fail the dialog; the original error is always rethrown.
    */
   private async deliver(request: AdapterRequest): Promise<AdapterResponse> {
-    const response = await this.transport.sendRequest(request);
+    let response: AdapterResponse;
+    try {
+      response = await this.transport.sendRequest(request);
+    } catch (error) {
+      if (error instanceof MessageDroppedError) {
+        this.failIfRetryBudgetExhausted(request.dialog_id, request.seq);
+      }
+      throw error;
+    }
 
     if (response.status === 'ok' || response.status === 'duplicate') {
       this.outbound.markAcked(request.dialog_id, request.seq);
     }
 
     return response;
+  }
+
+  /**
+   * Move the dialog to FAILED when an unanswered (PENDING) request has used
+   * up maxAttempts.  ACKED requests never count: retrying a request that was
+   * already answered (a dedup replay) cannot fail a dialog.  Terminal
+   * dialogs are left untouched.
+   */
+  private failIfRetryBudgetExhausted(dialogId: string, seq: number): void {
+    const logged = this.outbound.findByKey(dialogId, seq);
+    if (logged === null || logged.status !== 'PENDING') return;
+    if (logged.attempts < this.maxAttempts) return;
+
+    const dialog = this.dialogManager.getDialog(dialogId);
+    if (dialog === null || isTerminal(dialog.state)) return;
+
+    this.dialogManager.transition(dialogId, 'FAILED');
+    this.dialogs.delete(dialogId);
+    logger.warn('dialog failed', {
+      dialog_id: dialogId,
+      task_id:   dialog.task_id,
+      reason:    `seq ${seq} unanswered after ${logged.attempts} attempt(s)`,
+    });
   }
 
   private requireLocalDialog(dialogId: string): string {
