@@ -40,7 +40,7 @@ export default function Header({ status, running, onReset }) {
                 PS-021
               </span>
             </h1>
-            <p className="truncate text-[12.5px] text-slate-500">Two AI agents, one unreliable network, zero lost or repeated work</p>
+            <p className="truncate text-[12.5px] text-slate-500">Two agent adapters, one lossy link: dialog correlation, duplicate detection and recovery</p>
           </div>
         </div>
 

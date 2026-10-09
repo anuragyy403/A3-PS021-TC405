@@ -4,24 +4,16 @@
  * Driver: sql.js (pure WebAssembly SQLite)
  *
  * DRIVER NOTE:
- *   The approved driver is better-sqlite3, which provides a fully synchronous
- *   API and native WAL persistence.  It requires a C++ build toolchain
- *   (Visual Studio on Windows) which is unavailable on this build machine.
- *   sql.js is an architecturally equivalent alternative: it embeds the SQLite
- *   engine as WebAssembly, requires zero compilation, and runs identical SQL.
+ *   sql.js is the driver in use.  It embeds the SQLite engine as WebAssembly,
+ *   needs no native compilation, and runs standard SQLite SQL.  A native
+ *   driver (better-sqlite3) was not used because it needs a C++ build
+ *   toolchain that is not available on the development machine.
  *
- *   The ONLY behavioral difference is the persistence write path:
- *     better-sqlite3: writes are flushed automatically by the OS via mmap.
- *     sql.js:         the in-memory database must be explicitly exported and
- *                     written to disk with fs.writeFileSync after mutations.
- *
- *   We encapsulate this in `persistToDisk(db, dbPath)`.  All other code
- *   (repositories, tests, application logic) is identical regardless of driver.
- *
- *   To switch back to better-sqlite3 (on a machine with build tools):
- *     1. Replace this file with the better-sqlite3 version.
- *     2. Update package.json dependencies.
- *     3. All other files remain unchanged.
+ *   Persistence model: sql.js keeps the database in memory.  After every
+ *   mutation the whole database is exported and written to the .db file by
+ *   `persistToDisk(db, dbPath)` (fs.writeFileSync — an in-place overwrite,
+ *   not an atomic rename).  On startup the file is read back into memory.
+ *   This file is the only place that knows about the driver.
  *
  * Usage:
  *

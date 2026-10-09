@@ -1,0 +1,18 @@
+{
+  "name": "nighthawks-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Nighthawks PS-021: browser end-to-end tests (Playwright + local Microsoft Edge) of the dashboard against a real backend.",
+  "type": "module",
+  "scripts": {
+    "e2e": "node scripts/run-e2e.mjs",
+    "e2e:headed": "node scripts/run-e2e.mjs --headed",
+    "demo:record": "node demo/record.mjs",
+    "demo:screenshots": "node demo/screenshots.mjs",
+    "report:diagrams": "node report/diagrams.mjs",
+    "report:pdf": "node report/diagrams.mjs && node report/build-pdf.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

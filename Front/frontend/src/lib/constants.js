@@ -1,67 +1,34 @@
-import {
-  Copy,
-  Fingerprint,
-  HeartPulse,
-  LifeBuoy,
-  Radar,
-  RotateCcw,
-  Shuffle,
-  Zap,
-} from 'lucide-react';
+import { Fingerprint, LifeBuoy, RotateCcw, Shuffle, Zap } from 'lucide-react';
 
 /* ------------------------------------------------------------------ *
  * Plain-language vocabulary
  *
- * The engine speaks in protocol terms (seq, NACK, WAL, rehydration) because
- * that is what the audit trail has to record. Everything a human reads is
- * translated through the maps below, so the jargon exists in exactly one place
- * and the interface can stay plain.
+ * The backend speaks in dialog_id / task_id / seq and lifecycle states.
+ * Everything a human reads is translated through the maps below, so the
+ * vocabulary lives in one place and the interface can stay plain.
  * ------------------------------------------------------------------ */
 
-/** Lifecycle states, with the label a non-technical audience actually needs. */
-export const LIFECYCLE_STATES = [
-  'INITIATED',
-  'PROCESSING',
-  'WAITING_ACK',
-  'COMMITTED',
-  'RECOVERED',
-  'FAILED',
-];
+/** The five backend lifecycle states (backend/src/types/index.ts). */
+export const LIFECYCLE_STATES = ['INITIATED', 'PROCESSING', 'COMMITTED', 'RECOVERED', 'FAILED'];
 
-/** Non-terminal phases rendered as the linear spine of the stepper. */
-export const PHASE_STATES = ['INITIATED', 'PROCESSING', 'WAITING_ACK'];
-
-/** Terminal states rendered as the branch of the stepper. */
 export const TERMINAL_STATES = ['COMMITTED', 'RECOVERED', 'FAILED'];
 
-export const TERMINAL_SET = new Set(TERMINAL_STATES);
-
-export const isTerminal = (state) => TERMINAL_SET.has(state);
-
-/**
- * Authoritative transition table. Any attempt to move a dialog along an edge
- * that is not listed here is rejected by the engine and logged as an error,
- * which is what keeps the correlation invariants auditable.
- */
+/** The backend's transition table, mirrored for reference (the backend enforces it). */
 export const VALID_TRANSITIONS = {
   INITIATED: ['PROCESSING', 'FAILED'],
-  PROCESSING: ['WAITING_ACK', 'FAILED'],
-  WAITING_ACK: ['PROCESSING', 'COMMITTED', 'RECOVERED', 'FAILED'],
+  PROCESSING: ['COMMITTED', 'RECOVERED', 'FAILED'],
   COMMITTED: [],
   RECOVERED: [],
   FAILED: [],
 };
 
-export const canTransition = (from, to) => (VALID_TRANSITIONS[from] ?? []).includes(to);
-
 /** What each lifecycle state means, in one sentence. */
 export const STATE_PLAIN = {
-  INITIATED: { label: 'Not started yet', hint: 'The task has been created but no packet has arrived.' },
-  PROCESSING: { label: 'In progress', hint: 'Packets are arriving and work is being done.' },
-  WAITING_ACK: { label: 'Waiting for confirmation', hint: 'All work is done, waiting for the receiver to confirm.' },
-  COMMITTED: { label: 'Completed', hint: 'Every packet was processed exactly once.' },
-  RECOVERED: { label: 'Recovered', hint: 'The sender crashed, then finished the task from saved state.' },
-  FAILED: { label: 'Failed', hint: 'A packet never arrived, so the task could not be completed.' },
+  INITIATED: { label: 'Not started yet', hint: 'The task has been created; no request has been processed yet.' },
+  PROCESSING: { label: 'In progress', hint: 'Requests are being sent and processed.' },
+  COMMITTED: { label: 'Completed', hint: 'Completed normally; a repeated request was answered from the stored result, not run again.' },
+  RECOVERED: { label: 'Recovered', hint: 'Completed after a backend restart, from the state saved in the SQLite file.' },
+  FAILED: { label: 'Failed', hint: 'The task stopped before finishing — the retry limit was reached or it was aborted.' },
 };
 
 /** Colour for each lifecycle state, expressed as plain Tailwind tokens. */
@@ -79,13 +46,6 @@ export const STATE_STYLE = {
     dot: 'bg-sky-400',
     text: 'text-sky-300',
     ring: 'ring-sky-400/30',
-  },
-  WAITING_ACK: {
-    chip: 'bg-amber-500/15 text-amber-300 ring-amber-400/30',
-    solid: 'bg-amber-500/20 text-amber-100 ring-amber-400/50',
-    dot: 'bg-amber-400',
-    text: 'text-amber-300',
-    ring: 'ring-amber-400/30',
   },
   COMMITTED: {
     chip: 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/30',
@@ -121,54 +81,15 @@ export const LAYERS = {
 
 export const LAYER_LABEL = Object.fromEntries(Object.entries(LAYERS).map(([key, value]) => [key, value.label]));
 
-/** The four moving parts of the system, as the pipeline presents them. */
-export const PIPELINE_NODES = [
-  {
-    key: 'sender',
-    label: 'Sender Agent',
-    plain: 'Creates the task and sends numbered packets.',
-    Icon: 'send',
-    accent: 'sky',
-  },
-  {
-    key: 'channel',
-    label: 'Network Channel',
-    plain: 'The unreliable 6G link. Packets can be lost, delayed or shuffled.',
-    Icon: 'network',
-    accent: 'amber',
-  },
-  {
-    key: 'receiver',
-    label: 'Receiver Agent',
-    plain: 'Applies each packet exactly once, in the right order.',
-    Icon: 'server',
-    accent: 'violet',
-  },
-  {
-    key: 'database',
-    label: 'Saved State Database',
-    plain: 'Keeps a checkpoint after every step, so a crash is recoverable.',
-    Icon: 'database',
-    accent: 'cyan',
-  },
-];
-
 /** Log entry classifications exposed as stream filters. */
 export const LOG_KINDS = ['success', 'duplicate', 'recovery', 'error'];
-
-export const LOG_KIND_STYLE = {
-  success: { label: 'Success', text: 'text-emerald-300' },
-  duplicate: { label: 'Blocked', text: 'text-violet-300' },
-  recovery: { label: 'Recovery', text: 'text-amber-300' },
-  error: { label: 'Problem', text: 'text-rose-300' },
-};
 
 /** Health of the supervised components. */
 export const NODE_DEFS = [
   { key: 'adapterA', label: 'Sender Agent', sub: 'creates and sends tasks', Icon: 'send', accent: 'sky' },
-  { key: 'adapterB', label: 'Receiver Agent', sub: 'applies each packet once', Icon: 'server', accent: 'violet' },
-  { key: 'bridge', label: 'Network Channel', sub: '6G slice transport', Icon: 'network', accent: 'amber' },
-  { key: 'storage', label: 'Saved State Database', sub: 'crash-safe checkpoints', Icon: 'database', accent: 'cyan' },
+  { key: 'adapterB', label: 'Receiver Agent', sub: 'processes each (dialog, seq) once', Icon: 'server', accent: 'violet' },
+  { key: 'bridge', label: 'Network Channel', sub: 'in-process transport, can lose messages', Icon: 'network', accent: 'amber' },
+  { key: 'storage', label: 'Saved State Database', sub: 'SQLite file, saved after every change', Icon: 'database', accent: 'cyan' },
 ];
 
 export const STATUS_STYLE = {
@@ -178,28 +99,10 @@ export const STATUS_STYLE = {
   offline: { dot: 'bg-rose-500', text: 'text-rose-300', ring: 'ring-rose-400/30', label: 'Disconnected' },
 };
 
-/** Wire protocols that the dispatcher can wrap a payload into. */
-export const PROTOCOLS = [
-  {
-    id: 'MCP',
-    label: 'MCP',
-    plain: 'Standard tool-call format',
-    spec: 'JSON-RPC 2.0 · tools/call',
-    short: 'MCP',
-  },
-  {
-    id: 'A2A',
-    label: 'A2A',
-    plain: 'Agent hand-off format',
-    spec: 'task + message envelope',
-    short: 'A2A',
-  },
-];
-
-export const PROTOCOL_MAP = Object.fromEntries(PROTOCOLS.map((p) => [p.id, p]));
-
 /**
- * The five mandatory PS-021 demonstrations.
+ * The five mandatory PS-021 demonstrations, described from what the backend
+ * scripts actually do (backend/src/scenarios/scenario1..5.ts).  `title` is the
+ * backend title without its "Scenario N — " prefix.
  *
  * `tone` drives the card, the pipeline highlight and the feed tint, so the
  * colour of a card always matches the colour of what the pipeline does.
@@ -207,58 +110,53 @@ export const PROTOCOL_MAP = Object.fromEntries(PROTOCOLS.map((p) => [p.id, p]));
 export const SCENARIOS = [
   {
     id: 1,
-    title: 'Multiple Dialogs → Correct Correlation',
-    tagline: 'Two tasks running simultaneously',
-    description: 'Two independent dialogs (D1, D2) are active at the same time with interleaved requests. A request from D2 is lost and retried. The system correctly correlates each request to its own dialog without cross-contamination.',
-    outcome: 'Both dialogs complete independently',
-    watch: ['2 dialogs interleaved', 'Lost request retried', 'No cross-contamination'],
+    title: 'Multiple Dialogs + Retry → Correct Correlation',
+    tagline: 'Two dialogs open; a lost request is retried',
+    description: "Opens two dialogs (D1/T1 and D2/T2). D2's seq 1 is lost before the Receiver sees it. The script then retries the same D2 / T2 / seq 1: it is processed once and answered for D2, while D1 is untouched. D2 is completed; D1 is left open, not started.",
+    outcome: 'The retry is correlated to D2 only; D2 ends COMMITTED',
+    watch: ['D2 seq 1 lost', 'Explicit retry, same ids', 'D1 untouched'],
     Icon: Zap,
     tone: 'emerald',
-    protocol: 'MCP',
   },
   {
     id: 2,
     title: 'Request Lost → Retry',
-    tagline: 'Request never arrives, then sent again',
-    description: 'A request is sent but lost in the network—it never reaches the receiver. The sender retries after timeout. The receiver processes the retry normally since it has no record of the first attempt.',
-    outcome: 'Retry processed successfully',
-    watch: ['Request lost in transit', 'Timeout triggers retry', 'Processed normally'],
+    tagline: 'The request never arrives, then is retried',
+    description: 'Opens one dialog and sends seq 1 with the request lost: nothing is processed and seq 1 stays pending at the Sender. The script retries the same dialog_id / task_id / seq. The Receiver has never seen it, so it processes it once, and the task is completed.',
+    outcome: 'The retry is processed once; the task ends COMMITTED',
+    watch: ['Request lost', 'Explicit retry, same ids', 'Work done once'],
     Icon: RotateCcw,
     tone: 'amber',
-    protocol: 'MCP',
   },
   {
     id: 3,
     title: 'Response Lost → Duplicate Request',
-    tagline: 'Work done, response lost, retry detected',
-    description: 'The receiver processes a request and performs the side effect, but the response is lost. The sender retries the same request. The receiver detects it as a duplicate using the deduplication record and does not repeat the work.',
-    outcome: 'Duplicate detected, work not repeated',
-    watch: ['Response lost', 'Request retried', 'Duplicate blocked'],
+    tagline: 'Work done, reply lost, retry recognised',
+    description: 'The Receiver processes seq 1 (the work runs once), then the reply is lost. The script retries the same dialog / task / seq. The Receiver finds its saved record of seq 1, returns the stored result and does not run the work again. The task is completed.',
+    outcome: 'Duplicate detected, work not repeated; the task ends COMMITTED',
+    watch: ['Reply lost', 'Retry is a duplicate', 'Stored answer returned'],
     Icon: Fingerprint,
     tone: 'violet',
-    protocol: 'A2A',
   },
   {
     id: 4,
     title: 'Adapter B Restart → Durable State Recovery',
-    tagline: 'Receiver crashes, then recovers',
-    description: 'Adapter B (receiver) crashes after processing some requests. It restarts and reloads dialog state from the database. Subsequent requests are processed correctly, and duplicate detection still works.',
-    outcome: 'State recovered, no work repeated',
-    watch: ['Receiver crashes', 'State reloaded', 'Processing continues'],
+    tagline: 'The whole backend restarts from its SQLite file',
+    description: 'Seq 1 is processed and its reply is lost. "Restart Adapter B" then restarts the whole backend process: both adapters share one SQLite file and are rebuilt from it. The task is reloaded with the same ids, next seq 2 and seq 1 still unanswered. Retrying seq 1 returns the stored result without running the work again; completing the task marks it Recovered.',
+    outcome: 'Same task reloaded, no work repeated; the task ends RECOVERED',
+    watch: ['Full process restart', 'Reloaded from SQLite', 'Retry is a duplicate'],
     Icon: LifeBuoy,
     tone: 'cyan',
-    protocol: 'MCP',
   },
   {
     id: 5,
     title: 'Mid-Task Disconnect + Adapter A Restart → Resume',
-    tagline: 'Sender crashes mid-task, recovers',
-    description: 'Adapter A (sender) crashes partway through a task and loses its memory. It restarts, reloads the unfinished dialog from the database with the same task_id, and continues sending requests without repeating completed work.',
-    outcome: 'Task identity preserved, resumed',
-    watch: ['Sender crashes', 'Task identity preserved', 'Recovered'],
+    tagline: 'Restart mid-task, then continue the same task',
+    description: 'Seq 1 and 2 are processed; seq 3 is processed but its reply is lost. "Restart Adapter A" restarts the whole backend process from the SQLite file. The same dialog and task are reloaded with seq 3 unanswered and next seq 4, derived from the saved state. Retries of seq 3 and seq 1 are duplicates, the next request gets seq 4, and the task is marked Recovered.',
+    outcome: 'Same dialog_id / task_id resumed at seq 4; the task ends RECOVERED',
+    watch: ['Full process restart', 'Next seq from saved state', 'Same dialog_id / task_id'],
     Icon: Shuffle,
     tone: 'sky',
-    protocol: 'A2A',
   },
 ];
 
@@ -327,35 +225,3 @@ export const HEADLINE_METRICS = [
   { key: 'duplicates', label: 'Duplicates Blocked', Icon: 'copy', tone: 'violet' },
   { key: 'recovery', label: 'Recovery Success Rate', Icon: 'recovery', tone: 'cyan' },
 ];
-
-/** Icons that the presentation layer resolves by name, kept in one place. */
-export const ICON_MAP = {
-  send: 'send',
-  server: 'server',
-  network: 'network',
-  database: 'database',
-  wifi: 'wifi',
-  tasks: 'tasks',
-  copy: 'copy',
-  recovery: 'recovery',
-  zap: Zap,
-  shuffle: Shuffle,
-  rotate: RotateCcw,
-  fingerprint: Fingerprint,
-  radar: Radar,
-  lifeBuoy: LifeBuoy,
-  heartPulse: HeartPulse,
-  duplicate: Copy,
-};
-
-/** Engine timings (ms). Kept in one place so the demo stays watchable. */
-export const TIMING = {
-  QUIET_MS: 700,
-  ACK_MS: 600,
-  NACK_INTERVAL: 650,
-  RTO: 1500,
-  RETRANSMIT_MAX: 3,
-  WATCHDOG_TICK: 200,
-  TELEMETRY_TICK: 1000,
-  MAX_RETRANSMITS: 3,
-};

@@ -1,0 +1,149 @@
+{
+  "scenario_id": 4,
+  "run_id": "rmuzdgs315a6b",
+  "title": "Scenario 4 — Adapter B Restart → Durable State Recovery",
+  "status": "passed",
+  "started_at": "2026-10-08T10:06:54.253Z",
+  "duration_ms": 13,
+  "steps": [
+    {
+      "at": "2026-10-08T10:06:54.253Z",
+      "text": "Create D1/T1",
+      "tone": "head"
+    },
+    {
+      "at": "2026-10-08T10:06:54.255Z",
+      "text": "Send seq 1 — B processes it, the response is lost",
+      "tone": "warn"
+    },
+    {
+      "at": "2026-10-08T10:06:54.258Z",
+      "text": "PASS · B processed seq 1 — processed_count=1",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.258Z",
+      "text": "PASS · dialog PROCESSING before restart — state=PROCESSING",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.258Z",
+      "text": "Restart Adapter B (process restart: reopen the SQLite file)",
+      "tone": "warn"
+    },
+    {
+      "at": "2026-10-08T10:06:54.262Z",
+      "text": "PASS · D1/T1 reloaded from the file — task=T1, state=PROCESSING",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.262Z",
+      "text": "PASS · next_seq derived from durable state — next_seq=2",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.262Z",
+      "text": "PASS · seq 1 reported as in flight — pending=[1]",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.262Z",
+      "text": "Retry the in-flight seq 1 with its stored payload",
+      "tone": "info"
+    },
+    {
+      "at": "2026-10-08T10:06:54.265Z",
+      "text": "PASS · retry recognised as duplicate after restart — outcome=duplicate",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.265Z",
+      "text": "PASS · stored result returned — payload.data=before-restart",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.265Z",
+      "text": "PASS · restarted B ran no side effect — side_effects_since_boot=0",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.265Z",
+      "text": "PASS · seq 1 now acknowledged — pending=[]",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.265Z",
+      "text": "Adapter A completes the task",
+      "tone": "info"
+    },
+    {
+      "at": "2026-10-08T10:06:54.266Z",
+      "text": "PASS · dialog RECOVERED — state=RECOVERED, restored=true",
+      "tone": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "label": "B processed seq 1",
+      "ok": true,
+      "detail": "processed_count=1"
+    },
+    {
+      "label": "dialog PROCESSING before restart",
+      "ok": true,
+      "detail": "state=PROCESSING"
+    },
+    {
+      "label": "D1/T1 reloaded from the file",
+      "ok": true,
+      "detail": "task=T1, state=PROCESSING"
+    },
+    {
+      "label": "next_seq derived from durable state",
+      "ok": true,
+      "detail": "next_seq=2"
+    },
+    {
+      "label": "seq 1 reported as in flight",
+      "ok": true,
+      "detail": "pending=[1]"
+    },
+    {
+      "label": "retry recognised as duplicate after restart",
+      "ok": true,
+      "detail": "outcome=duplicate"
+    },
+    {
+      "label": "stored result returned",
+      "ok": true,
+      "detail": "payload.data=before-restart"
+    },
+    {
+      "label": "restarted B ran no side effect",
+      "ok": true,
+      "detail": "side_effects_since_boot=0"
+    },
+    {
+      "label": "seq 1 now acknowledged",
+      "ok": true,
+      "detail": "pending=[]"
+    },
+    {
+      "label": "dialog RECOVERED",
+      "ok": true,
+      "detail": "state=RECOVERED, restored=true"
+    }
+  ],
+  "dialogs": [
+    {
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "final_state": "RECOVERED",
+      "restored": true
+    }
+  ],
+  "events": {
+    "from": 47,
+    "to": 88
+  }
+}

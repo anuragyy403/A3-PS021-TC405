@@ -2,8 +2,7 @@
  * DialogRepository — all SQL that touches the `dialogs` table.
  *
  * Uses the sql.js API (pure WebAssembly SQLite).
- * The SQL statements are identical to what better-sqlite3 would use;
- * only the method-call style differs.
+ * The SQL is plain SQLite; only the sql.js method-call style is driver-specific.
  *
  * sql.js API notes:
  *   db.run(sql, params)           — execute, no return value
@@ -12,15 +11,20 @@
  *   stmt.getAsObject() iterate   — use stmt.step() / stmt.getAsObject()
  *   db.prepare(sql).run(params)  — prepared statement run
  *
+ * Persistence:
+ *   Every mutation method calls persistToDisk() before returning to ensure
+ *   the change is flushed to the SQLite file.  This guarantees durability
+ *   across process restarts (R3 requirement).
+ *
  * Crash-window note:
- *   The caller must call persistToDisk(db, dbPath) after any mutation to
- *   flush the in-memory state to disk.  Without this flush, a process crash
- *   loses the mutation.  The crash window (side effect before persist) is an
- *   acknowledged limitation documented in KIRO_PROJECT_CONTEXT.md.
+ *   The crash window (side effect before persist) is an acknowledged
+ *   limitation documented in README.md and docs/EXPERIMENTAL_SCHEMA.md.  This implementation
+ *   minimizes that window by persisting immediately after the SQL mutation.
  */
 
 import type { Database } from 'sql.js';
 import type { DialogRecord, LifecycleState } from '../types/index.js';
+import { persistToDisk } from '../db/index.js';
 
 /** Row shape returned by sql.js getAsObject for the dialogs table. */
 interface DialogRow {
@@ -28,8 +32,6 @@ interface DialogRow {
   task_id:    string;
   state:      string;
   restored:   number; // 0 | 1  (SQLite has no BOOLEAN)
-  created_at: string;
-  updated_at: string;
 }
 
 /** Map a raw sql.js row to the typed DialogRecord. */
@@ -39,16 +41,16 @@ function rowToRecord(row: DialogRow): DialogRecord {
     task_id:    row.task_id    as string,
     state:      row.state      as LifecycleState,
     restored:   (row.restored as unknown as number) === 1,
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
   };
 }
 
 export class DialogRepository {
   private readonly db: Database;
+  private readonly dbPath: string;
 
-  constructor(db: Database) {
+  constructor(db: Database, dbPath: string) {
     this.db = db;
+    this.dbPath = dbPath;
   }
 
   // -------------------------------------------------------------------------
@@ -58,37 +60,38 @@ export class DialogRepository {
   /**
    * Insert a new dialog record.
    * Throws if a dialog with the same dialog_id already exists (UNIQUE).
+   * Flushes to disk before returning.
    */
   create(record: DialogRecord): void {
     this.db.run(
-      `INSERT INTO dialogs (dialog_id, task_id, state, restored, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO dialogs (dialog_id, task_id, state, restored)
+       VALUES (?, ?, ?, ?)`,
       [
         record.dialog_id,
         record.task_id,
         record.state,
         record.restored ? 1 : 0,
-        record.created_at,
-        record.updated_at,
       ],
     );
+    persistToDisk(this.db, this.dbPath);
   }
 
   /**
    * Transition a dialog to a new lifecycle state.
+   * Flushes to disk before returning.
    */
   updateState(
     dialogId:  string,
     newState:  LifecycleState,
     restored:  boolean,
-    updatedAt: string,
   ): void {
     this.db.run(
       `UPDATE dialogs
-       SET state = ?, restored = ?, updated_at = ?
+       SET state = ?, restored = ?
        WHERE dialog_id = ?`,
-      [newState, restored ? 1 : 0, updatedAt, dialogId],
+      [newState, restored ? 1 : 0, dialogId],
     );
+    persistToDisk(this.db, this.dbPath);
   }
 
   // -------------------------------------------------------------------------
@@ -120,7 +123,7 @@ export class DialogRepository {
     const stmt = this.db.prepare(
       `SELECT * FROM dialogs
        WHERE state IN ('INITIATED', 'PROCESSING')
-       ORDER BY created_at ASC`,
+       ORDER BY dialog_id ASC`,
     );
     const rows: DialogRecord[] = [];
     while (stmt.step()) {
@@ -135,7 +138,7 @@ export class DialogRepository {
    */
   findAll(): DialogRecord[] {
     const stmt = this.db.prepare(
-      `SELECT * FROM dialogs ORDER BY created_at DESC`,
+      `SELECT * FROM dialogs ORDER BY dialog_id ASC`,
     );
     const rows: DialogRecord[] = [];
     while (stmt.step()) {
@@ -143,6 +146,17 @@ export class DialogRepository {
     }
     stmt.free();
     return rows;
+  }
+
+  /**
+   * Number of dialogs that have been through recovery (restored = 1).
+   */
+  countRestored(): number {
+    const stmt = this.db.prepare(`SELECT COUNT(*) AS n FROM dialogs WHERE restored = 1`);
+    stmt.step();
+    const row = stmt.getAsObject() as unknown as { n: number };
+    stmt.free();
+    return Number(row.n);
   }
 
   /**

@@ -72,6 +72,43 @@ export default function MetricBar({ metrics, nodes }) {
   const duplicates = metrics.dedup ?? 0;
   const rate = metrics.recoveryRate;
 
+  // Backend-only detail (undefined in the browser simulation, whose wording is kept).
+  const hasSplit = typeof metrics.inProgress === 'number' && typeof metrics.notStarted === 'number';
+  const failedTasks = metrics.failed ?? 0;
+  const restoredOpen = metrics.restoredOpen ?? 0;
+
+  let tasksSub;
+  if (totalTasks === 0) {
+    tasksSub = 'No tasks yet — run one of the demos below';
+  } else if (!hasSplit) {
+    tasksSub = inProgress > 0
+      ? `${inProgress} still running, ${finished} finished successfully`
+      : `All ${finished} finished successfully, nothing repeated`;
+  } else if (metrics.inProgress + metrics.notStarted === 0 && failedTasks === 0) {
+    tasksSub = `All ${finished} finished successfully, nothing repeated`;
+  } else {
+    tasksSub = [
+      metrics.inProgress ? `${metrics.inProgress} in progress` : null,
+      metrics.notStarted ? `${metrics.notStarted} not started` : null,
+      `${finished} finished successfully`,
+      failedTasks ? `${failedTasks} stopped early` : null,
+    ].filter(Boolean).join(', ');
+  }
+
+  const openNote = restoredOpen ? `${restoredOpen} restored task${restoredOpen === 1 ? '' : 's'} still open` : null;
+  let rateValue = rate === null || rate === undefined ? '100%' : `${Math.round(rate)}%`;
+  let rateSub = rate === null || rate === undefined
+    ? 'Nothing has needed rescuing yet'
+    : `${metrics.recoverySucceeded} of ${metrics.recoveryAttempted} recoveries succeeded`;
+  if (openNote) {
+    if (rate === null || rate === undefined) {
+      rateValue = '—';
+      rateSub = `${openNote} — not finished yet, so not counted`;
+    } else {
+      rateSub = `${rateSub} · ${openNote}`;
+    }
+  }
+
   const cards = [
     {
       ...HEADLINE_METRICS[0],
@@ -103,12 +140,7 @@ export default function MetricBar({ metrics, nodes }) {
       ...HEADLINE_METRICS[1],
       tone: 'info',
       value: String(totalTasks),
-      sub:
-        totalTasks === 0
-          ? 'No tasks yet — run one of the demos below'
-          : inProgress > 0
-            ? `${inProgress} still running, ${finished} finished successfully`
-            : `All ${finished} finished successfully, nothing repeated`,
+      sub: tasksSub,
       footnote: (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
           <div
@@ -135,11 +167,8 @@ export default function MetricBar({ metrics, nodes }) {
     {
       ...HEADLINE_METRICS[3],
       tone: 'good',
-      value: rate === null || rate === undefined ? '100%' : `${Math.round(rate)}%`,
-      sub:
-        rate === null || rate === undefined
-          ? 'Nothing has needed rescuing yet'
-          : `${metrics.recoverySucceeded} of ${metrics.recoveryAttempted} recoveries succeeded`,
+      value: rateValue,
+      sub: rateSub,
       footnote: (
         <p className="text-[11px] leading-snug text-slate-500">
           When a packet is lost or an agent crashes, the work is picked back up from the database and finished.

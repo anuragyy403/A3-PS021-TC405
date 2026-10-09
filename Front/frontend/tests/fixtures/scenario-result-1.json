@@ -1,0 +1,140 @@
+{
+  "scenario_id": 1,
+  "run_id": "rmuzdgs298252",
+  "title": "Scenario 1 — Multiple Dialogs + Retry → Correct Correlation",
+  "status": "passed",
+  "started_at": "2026-10-08T10:06:54.225Z",
+  "duration_ms": 15,
+  "steps": [
+    {
+      "at": "2026-10-08T10:06:54.225Z",
+      "text": "Create two dialogs: D1/T1 and D2/T2",
+      "tone": "head"
+    },
+    {
+      "at": "2026-10-08T10:06:54.229Z",
+      "text": "PASS · two distinct dialogs exist — dlg-1791454014225-zoghbe5 / dlg-1791454014228-edu55xo",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.229Z",
+      "text": "Send D2 seq 1 — the request is lost before Adapter B receives it",
+      "tone": "warn"
+    },
+    {
+      "at": "2026-10-08T10:06:54.231Z",
+      "text": "PASS · D2 seq 1 request dropped — delivery=request_dropped",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.231Z",
+      "text": "PASS · Adapter B never saw it — processed_count=0",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.231Z",
+      "text": "Retry the same logical request: D2 / T2 / seq 1",
+      "tone": "info"
+    },
+    {
+      "at": "2026-10-08T10:06:54.236Z",
+      "text": "PASS · retry processed (original never arrived, so not a duplicate) — outcome=ok",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.236Z",
+      "text": "PASS · retry correlated to D2/T2, not D1/T1 — dialog=D2",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.237Z",
+      "text": "PASS · D2 processed exactly one request — processed_count=1",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.238Z",
+      "text": "PASS · D1 untouched — processed_count=0",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.238Z",
+      "text": "Adapter A completes D2",
+      "tone": "info"
+    },
+    {
+      "at": "2026-10-08T10:06:54.240Z",
+      "text": "PASS · D2 COMMITTED — state=COMMITTED",
+      "tone": "pass"
+    },
+    {
+      "at": "2026-10-08T10:06:54.240Z",
+      "text": "PASS · D1 stays INITIATED — state=INITIATED",
+      "tone": "pass"
+    }
+  ],
+  "assertions": [
+    {
+      "label": "two distinct dialogs exist",
+      "ok": true,
+      "detail": "dlg-1791454014225-zoghbe5 / dlg-1791454014228-edu55xo"
+    },
+    {
+      "label": "D2 seq 1 request dropped",
+      "ok": true,
+      "detail": "delivery=request_dropped"
+    },
+    {
+      "label": "Adapter B never saw it",
+      "ok": true,
+      "detail": "processed_count=0"
+    },
+    {
+      "label": "retry processed (original never arrived, so not a duplicate)",
+      "ok": true,
+      "detail": "outcome=ok"
+    },
+    {
+      "label": "retry correlated to D2/T2, not D1/T1",
+      "ok": true,
+      "detail": "dialog=D2"
+    },
+    {
+      "label": "D2 processed exactly one request",
+      "ok": true,
+      "detail": "processed_count=1"
+    },
+    {
+      "label": "D1 untouched",
+      "ok": true,
+      "detail": "processed_count=0"
+    },
+    {
+      "label": "D2 COMMITTED",
+      "ok": true,
+      "detail": "state=COMMITTED"
+    },
+    {
+      "label": "D1 stays INITIATED",
+      "ok": true,
+      "detail": "state=INITIATED"
+    }
+  ],
+  "dialogs": [
+    {
+      "dialog_id": "dlg-1791454014225-zoghbe5",
+      "task_id": "s1-rmuzdgs298252-T1",
+      "final_state": "INITIATED",
+      "restored": false
+    },
+    {
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "final_state": "COMMITTED",
+      "restored": false
+    }
+  ],
+  "events": {
+    "from": 13,
+    "to": 46
+  }
+}

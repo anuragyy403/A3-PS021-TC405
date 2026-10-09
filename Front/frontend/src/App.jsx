@@ -1,22 +1,25 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useCorrelationEngine } from './lib/useCorrelationEngine.js';
+import { useBackendEngine } from './api/useBackendEngine.js';
 import { SCENARIOS } from './lib/constants.js';
+import { Pill } from './components/ui/Glass.jsx';
+import { TONE_CLASSES } from './components/ui/tokens.js';
 import Header from './components/Header.jsx';
 import MetricBar from './components/MetricBar.jsx';
 import PipelineVisualizer from './components/PipelineVisualizer.jsx';
+import ManualControls from './components/ManualControls.jsx';
 import ScenarioHub from './components/ScenarioHub.jsx';
 import TaskList from './components/TaskList.jsx';
 import ActivityFeed from './components/ActivityFeed.jsx';
 
 /**
- * Wires the four panels together.
+ * Wires the panels together.
  *
- * The engine is the single source of truth; nothing here holds simulation state
- * beyond which task is selected, so the picture on screen and the state of the
- * experiment can never disagree.
+ * The backend is the single source of truth (useBackendEngine polls its API);
+ * nothing here holds experiment state beyond which task is selected, so the
+ * picture on screen and the state of the backend cannot disagree.
  */
 export default function App() {
-  const engine = useCorrelationEngine();
+  const engine = useBackendEngine();
   const [selectedDialogId, setSelectedDialogId] = useState('');
 
   const running = Boolean(engine.simulation.running);
@@ -40,8 +43,7 @@ export default function App() {
   const activeScenario = running ? SCENARIOS.find((item) => item.id === engine.simulation.running) : null;
 
   const handleRun = useCallback((id) => {
-    const scenario = SCENARIOS.find((item) => item.id === id);
-    engine.runScenario(id, { protocol: scenario?.protocol ?? 'MCP' });
+    engine.runScenario(id);
   }, [engine]);
 
   const handleReset = useCallback(() => {
@@ -54,6 +56,25 @@ export default function App() {
       <Header status={status} running={running} onReset={handleReset} />
 
       <main className="mx-auto flex max-w-[1600px] flex-col gap-5 px-5 py-6 lg:px-8">
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
+          <Pill tone={engine.connected ? 'good' : 'bad'} pulse={!engine.connected}>
+            {engine.connected ? 'Live backend' : 'Live backend · unreachable'}
+          </Pill>
+          <span>Every number and event below comes from the backend API.</span>
+        </div>
+
+        {engine.banner ? (
+          <div
+            role="alert"
+            className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-[13px] text-slate-100 ${TONE_CLASSES[engine.banner.tone]?.border ?? ''} ${TONE_CLASSES[engine.banner.tone]?.bg ?? ''}`}
+          >
+            <span className="flex-1">{engine.banner.text}</span>
+            <button type="button" className="btn-subtle px-2.5 py-1" onClick={engine.dismissBanner} aria-label="Dismiss this message">
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
         <MetricBar metrics={engine.metrics} nodes={engine.nodes} />
 
         <PipelineVisualizer
@@ -61,9 +82,16 @@ export default function App() {
           logs={engine.logs}
           nodes={engine.nodes}
           metrics={engine.metrics}
-          dialogs={engine.dialogs}
-          dispatch={engine.dispatch}
-          clearBlackholes={engine.clearBlackholes}
+          manualPanel={(
+            <ManualControls
+              actions={engine.actions}
+              dialogs={engine.dialogs}
+              selectedId={selectedDialogId}
+              onSelect={setSelectedDialogId}
+              busy={engine.busy || running}
+              connected={engine.connected}
+            />
+          )}
           highlightedTone={activeScenario ? { emerald: 'good', amber: 'warn', sky: 'info', violet: 'duplicate', orange: 'warn' }[activeScenario.tone] : null}
         />
 
@@ -90,7 +118,8 @@ export default function App() {
           <span className="text-slate-500">Nighthawks &middot; AIORI-3 &middot; Track 6G &amp; Future Networks &middot; PS-021</span>
           <span>Built with React, Vite and Tailwind CSS</span>
           <span className="ml-auto">
-            Every task reference, packet number and checkpoint is recorded and can be opened in the activity feed.
+            Experimental hackathon prototype — not a standard, not a production system. Repeated work is prevented by
+            (dialog_id, seq); this is not exactly-once delivery.
           </span>
         </div>
       </footer>

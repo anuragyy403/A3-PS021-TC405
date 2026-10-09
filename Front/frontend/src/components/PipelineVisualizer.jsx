@@ -1,12 +1,9 @@
-﻿import { useCallback, useMemo, useState } from 'react';
-import { ArrowRight, Pause, Play, Sparkles } from 'lucide-react';
-import { IconTile, Pill, Toggle } from './ui/Glass.jsx';
+﻿import { useMemo } from 'react';
+import { IconTile, Pill } from './ui/Glass.jsx';
 import { TONE_CLASSES } from './ui/tokens.js';
 import { usePrefersReducedMotion } from './ui/hooks.js';
 import { usePacketLayer } from './usePacketLayer.js';
 import { narrate } from '../lib/narrate.js';
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** One of the boxes in the diagram. */
 function NodeCard({ icon, name, role, toneName, statusLabel, pulse, stats, className = '' }) {
@@ -39,17 +36,13 @@ function NodeCard({ icon, name, role, toneName, statusLabel, pulse, stats, class
  * This is the piece a demonstrator can point at: the three boxes are the two
  * agents and the link between them, the moving dots are packets in flight, and
  * the markers are the faults happening right now. Everything it draws is driven
- * by the engine's wire feed, so the animation cannot drift from the real state.
+ * by the backend's event feed, so the animation cannot drift from the real state.
+ * `manualPanel` (ManualControls) is rendered underneath.
  */
-export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs, dispatch, clearBlackholes, highlightedTone }) {
+export default function PipelineVisualizer({ wire, logs, nodes, metrics, highlightedTone, manualPanel = null }) {
   const reducedMotion = usePrefersReducedMotion();
   const { channelRef, storageRef } = usePacketLayer(wire, reducedMotion);
 
-  const [count, setCount] = useState(3);
-  const [loseOne, setLoseOne] = useState(false);
-  const [outOfOrder, setOutOfOrder] = useState(false);
-  const [duplicate, setDuplicate] = useState(false);
-  const [sending, setSending] = useState(false);
 
   const theme = TONE_CLASSES[highlightedTone] ?? TONE_CLASSES.info;
 
@@ -57,8 +50,6 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
   const channelStatus = nodes.bridge?.status ?? 'online';
   const receiverStatus = nodes.adapterB?.status ?? 'online';
   const storageStatus = nodes.storage?.status ?? 'online';
-
-  const heldCount = dialogs.reduce((sum, dialog) => sum + dialog.buffered.length, 0);
 
   /* --- the one-line explanation of what is happening right now --------- */
   const headline = useMemo(() => {
@@ -71,39 +62,6 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
     return null;
   }, [logs]);
 
-  /* --- manual test traffic ------------------------------------------- */
-  const handleSend = useCallback(async () => {
-    if (sending) return;
-    setSending(true);
-    const dialogId = `task-manual-${Date.now().toString(36).slice(-4)}`;
-    const total = Math.max(1, Math.min(6, count));
-
-    try {
-      if (outOfOrder && total > 1) {
-        await dispatch({ dialogId, seq: total, protocol: 'MCP', payload: { step: total } });
-        await sleep(320);
-      }
-
-      for (let seq = 1; seq <= total; seq += 1) {
-        const willBeLost = loseOne && seq === 2;
-        await dispatch({ dialogId, seq, protocol: 'MCP', payload: { step: seq }, blackhole: willBeLost });
-        if (duplicate && seq === 1) {
-          await sleep(160);
-          await dispatch({ dialogId, seq: 1, protocol: 'MCP', payload: { step: 1 } });
-        }
-        await sleep(420);
-      }
-
-      // Let the gap-detection path run, then open the link so the re-send lands.
-      if (loseOne) {
-        await sleep(900);
-        clearBlackholes(dialogId);
-      }
-    } finally {
-      setSending(false);
-    }
-  }, [count, dispatch, duplicate, loseOne, outOfOrder, sending, clearBlackholes]);
-
   const channelNote =
     channelStatus === 'offline'
       ? 'The channel is down — nothing can get through'
@@ -111,9 +69,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
         ? 'The channel is dropping packets right now'
         : channelStatus === 'booting'
           ? 'The channel is coming back up'
-          : heldCount > 0
-            ? `${heldCount} packet${heldCount > 1 ? 's are' : ' is'} held safely while a gap is filled`
-            : 'Packets can be lost, delayed or arrive out of order';
+          : 'Requests or replies can be lost — the sender retries with the same ids';
 
   return (
     <section className="glass overflow-hidden">
@@ -190,7 +146,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
             toneName="duplicate"
             statusLabel={receiverStatus === 'online' ? 'Online' : 'Waiting'}
             pulse={receiverStatus === 'online'}
-            stats={{ blurb: 'Accepts each packet once, and only in the right order.', value: `${metrics.sideEffects ?? 0} done` }}
+            stats={{ blurb: 'Processes each new (dialog, seq) once; a repeat gets the stored answer.', value: `${metrics.sideEffects ?? 0} done` }}
           />
 
           {/* -------- saved state database, hung off the receiver -------- */}
@@ -204,11 +160,11 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
               <IconTile name="database" tone="info" size="md" pulse={storageStatus === 'online'} />
               <div className="min-w-0">
                 <p className="truncate text-[13.5px] font-bold leading-tight text-white">Saved State</p>
-                <p className="truncate text-[10.5px] uppercase tracking-[0.12em] text-slate-500">crash-proof store</p>
+                <p className="truncate text-[10.5px] uppercase tracking-[0.12em] text-slate-500">SQLite file</p>
               </div>
             </div>
             <p className="mt-3 text-[11.5px] leading-relaxed text-slate-400">
-              Saves a checkpoint after every packet, so a crash never loses completed work.
+              Saved after every change; a restart reloads unfinished tasks from this file.
             </p>
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2.5">
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
@@ -245,49 +201,7 @@ export default function PipelineVisualizer({ wire, logs, nodes, metrics, dialogs
         </div>
       </div>
 
-      {/* ---------------- manual test controls ---------------- */}
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-3 px-6 py-5">
-        <div className="min-w-0">
-          <p className="overline mb-2">Or try it yourself</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
-              <span className="text-[12.5px] text-slate-400">Packets</span>
-              <input
-                type="number"
-                min={1}
-                max={6}
-                value={count}
-                onChange={(event) => setCount(Number(event.target.value))}
-                className="tabular w-8 bg-transparent text-center text-[13px] font-bold text-white outline-none"
-                aria-label="How many packets to send"
-              />
-            </label>
-            <Toggle checked={loseOne} onChange={setLoseOne} label="Lose one in the network" tone="bad" disabled={sending} />
-            <Toggle checked={outOfOrder} onChange={setOutOfOrder} label="Deliver out of order" tone="warn" disabled={sending} />
-            <Toggle checked={duplicate} onChange={setDuplicate} label="Send a duplicate" tone="duplicate" disabled={sending} />
-            <button type="button" className="btn-primary" onClick={handleSend} disabled={sending}>
-              {sending ? <Pause size={15} /> : <Play size={15} />}
-              {sending ? 'Sending...' : 'Send packets'}
-            </button>
-          </div>
-        </div>
-
-        <div className="ml-auto flex items-center gap-2 text-[11.5px] text-slate-500">
-          <ArrowRight size={13} className="text-slate-600" />
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> lost
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> out of order
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> processed
-          </span>
-          <span className="hidden items-center gap-1.5 sm:inline-flex">
-            <Sparkles size={11} className="text-cyan-400" /> restored
-          </span>
-        </div>
-      </div>
+      {manualPanel}
     </section>
   );
 }

@@ -24,9 +24,10 @@ import { z } from 'zod';
  *   PROCESSING — at least one request processed, work still ongoing
  *
  * Terminal (no outgoing transitions):
- *   COMMITTED  — task completed successfully, no crash occurred
- *   RECOVERED  — task completed successfully after Adapter A restart
- *   FAILED     — task could not complete (unrecoverable gap or error)
+ *   COMMITTED  — task completed by Adapter A, dialog never restored
+ *   RECOVERED  — task completed by Adapter A after a restart + recover()
+ *                (restored = true)
+ *   FAILED     — retry budget exhausted, or explicit AdapterA.failDialog()
  *
  * Transition table (enforced by DialogManager, defined here for reference):
  *   INITIATED  → PROCESSING | FAILED
@@ -96,8 +97,6 @@ export interface DialogRecord {
   task_id:    string;
   state:      LifecycleState;
   restored:   boolean;
-  created_at: string; // ISO 8601
-  updated_at: string; // ISO 8601
 }
 
 export const DialogRecordSchema = z.object({
@@ -105,8 +104,6 @@ export const DialogRecordSchema = z.object({
   task_id:    z.string().min(1),
   state:      LifecycleStateSchema,
   restored:   z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
 });
 
 // ---------------------------------------------------------------------------
@@ -121,7 +118,7 @@ export const DialogRecordSchema = z.object({
  *
  * seq:    sequence number = logical request identity within the dialog.
  *         A retry of the same request carries the same seq.  Only the
- *         attempt counter changes on retry.
+ *         attempts counter in Adapter A's send log changes on retry.
  *
  * result: JSON-serialised result stored so a duplicate response can be
  *         returned from the ledger rather than re-executing the side effect.
@@ -138,6 +135,41 @@ export const RequestRecordSchema = z.object({
   seq:          z.number().int().positive(),
   processed_at: z.string(),
   result:       z.string(),
+});
+
+// ---------------------------------------------------------------------------
+// Outbound request record (Adapter A's durable send log)
+// ---------------------------------------------------------------------------
+
+/**
+ * A request Adapter A has sent (or is about to send) to Adapter B.
+ *
+ * Written as PENDING before the transport call and flipped to ACKED when a
+ * response arrives.  PENDING rows that survive a restart are the requests
+ * that were in flight when Adapter A went down.
+ *
+ * payload:  JSON-serialised payload, replayed verbatim on retry so the same
+ *           (dialog_id, seq) always carries the same logical request.
+ * attempts: number of times this request was handed to the transport.
+ */
+export const OUTBOUND_STATUSES = ['PENDING', 'ACKED'] as const;
+
+export type OutboundStatus = (typeof OUTBOUND_STATUSES)[number];
+
+export interface OutboundRequestRecord {
+  dialog_id: string;
+  seq:       number;
+  payload:   string; // JSON string
+  status:    OutboundStatus;
+  attempts:  number;
+}
+
+export const OutboundRequestRecordSchema = z.object({
+  dialog_id: z.string().min(1),
+  seq:       z.number().int().positive(),
+  payload:   z.string(),
+  status:    z.enum(OUTBOUND_STATUSES),
+  attempts:  z.number().int().positive(),
 });
 
 // ---------------------------------------------------------------------------

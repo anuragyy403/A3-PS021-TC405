@@ -1,0 +1,57 @@
+/**
+ * Adapter message types for PS-021.
+ *
+ * These types define the messages exchanged between Adapter A and Adapter B
+ * through the transport layer.
+ *
+ * NOT an MCP implementation.
+ * NOT an A2A implementation.
+ * Experimental schema for PS-021 demonstration purposes only
+ * (see docs/EXPERIMENTAL_SCHEMA.md).
+ */
+
+/**
+ * Request sent from Adapter A to Adapter B.
+ *
+ * Contains the three identifiers required for correlation and deduplication:
+ *   - dialog_id: correlation key
+ *   - task_id:   task identity
+ *   - seq:       logical request within the dialog; (dialog_id, seq) is the
+ *                deduplication key.  A retry carries the same seq.
+ */
+export interface AdapterRequest {
+  dialog_id: string;
+  task_id:   string;
+  seq:       number;
+  payload:   unknown;  // Mock business payload (deterministic for testing)
+}
+
+/**
+ * Response sent from Adapter B back to Adapter A.
+ *
+ * Contains identifiers to correlate the response back to the request.
+ */
+export interface AdapterResponse {
+  dialog_id:   string;
+  task_id:     string;
+  seq:         number;
+  status:      'ok' | 'duplicate' | 'error';
+  result:      unknown;           // Result of processing (or stored duplicate result)
+  error?:      string;            // Error message if status is 'error'
+  error_code?: AdapterErrorCode;  // Machine-readable reason, set on every 'error'
+}
+
+/**
+ * Why Adapter B rejected a request.
+ *
+ *   DIALOG_NOT_FOUND — no dialog with this dialog_id
+ *   TASK_MISMATCH    — dialog exists but task_id differs from the stored one
+ *   DIALOG_TERMINAL  — dialog is COMMITTED / RECOVERED / FAILED and the
+ *                      (dialog_id, seq) was never processed
+ *   INTERNAL         — any other failure
+ */
+export type AdapterErrorCode =
+  | 'DIALOG_NOT_FOUND'
+  | 'TASK_MISMATCH'
+  | 'DIALOG_TERMINAL'
+  | 'INTERNAL';

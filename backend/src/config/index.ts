@@ -36,4 +36,27 @@ export const config = {
    * 'debug' | 'info' | 'warn' | 'error'
    */
   logLevel: (env['LOG_LEVEL'] ?? 'info') as 'debug' | 'info' | 'warn' | 'error',
+
+  /**
+   * Adapter A retry budget: unanswered attempts of one PENDING request before
+   * its dialog is moved to FAILED.  Validated by AdapterA (positive integer).
+   * Default: 5 (= DEFAULT_MAX_ATTEMPTS)
+   */
+  maxAttempts: Number(env['MAX_ATTEMPTS'] ?? 5),
+
+  /**
+   * Whether the demo-only reset (wipe the database file) is allowed.
+   * ALLOW_RESET=false|0 disables it, any other value enables it.
+   * Default: on, unless NODE_ENV=production.
+   */
+  allowReset: env['ALLOW_RESET'] !== undefined
+    ? !['false', '0'].includes(env['ALLOW_RESET'].toLowerCase())
+    : (env['NODE_ENV'] ?? 'development') !== 'production',
+
+  /**
+   * Capacity of the in-memory activity event buffer (oldest evicted first).
+   * Validated by EventLog (positive integer).
+   * Default: 1000
+   */
+  eventBufferSize: Number(env['EVENT_BUFFER_SIZE'] ?? 1000),
 } as const;

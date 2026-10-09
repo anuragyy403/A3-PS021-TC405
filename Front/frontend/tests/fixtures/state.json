@@ -1,0 +1,113 @@
+{
+  "runtime": {
+    "booted_at": "2026-10-08T10:06:54.259Z",
+    "restart_count": 1,
+    "epoch": "ep-muzdgs0t-ec8ad0",
+    "db_path_name": "live.db",
+    "max_attempts": 5,
+    "busy": false,
+    "running_scenario": null,
+    "cursor": 95,
+    "uptime_ms": 26
+  },
+  "nodes": {
+    "adapterA": {
+      "status": "online"
+    },
+    "adapterB": {
+      "status": "online"
+    },
+    "transport": {
+      "status": "online"
+    },
+    "storage": {
+      "status": "online"
+    }
+  },
+  "metrics": {
+    "processed_count": 4,
+    "transport_attempts": 9,
+    "dialogs_total": 5,
+    "by_state": {
+      "INITIATED": 1,
+      "PROCESSING": 1,
+      "COMMITTED": 1,
+      "RECOVERED": 1,
+      "FAILED": 1
+    },
+    "restored_total": 3,
+    "side_effects_since_boot": 0,
+    "duplicates_since_boot": 1,
+    "drops_since_boot": 5,
+    "uptime_ms": 26,
+    "booted_at": "2026-10-08T10:06:54.259Z",
+    "restart_count": 1
+  },
+  "dialogs": [
+    {
+      "dialog_id": "dlg-1791454014270-gk5h3hg",
+      "task_id": "task-fixture-failed",
+      "state": "FAILED",
+      "restored": false,
+      "terminal": true,
+      "next_seq": 2,
+      "processed_count": 0,
+      "pending_seqs": [
+        1
+      ],
+      "side_effects_since_boot": 0,
+      "duplicates_since_boot": 0
+    },
+    {
+      "dialog_id": "dlg-1791454014253-m45t6dc",
+      "task_id": "s4-rmuzdgs315a6b-T1",
+      "state": "RECOVERED",
+      "restored": true,
+      "terminal": true,
+      "next_seq": 2,
+      "processed_count": 1,
+      "pending_seqs": [],
+      "side_effects_since_boot": 0,
+      "duplicates_since_boot": 1
+    },
+    {
+      "dialog_id": "dlg-1791454014228-edu55xo",
+      "task_id": "s1-rmuzdgs298252-T2",
+      "state": "COMMITTED",
+      "restored": false,
+      "terminal": true,
+      "next_seq": 2,
+      "processed_count": 1,
+      "pending_seqs": [],
+      "side_effects_since_boot": 0,
+      "duplicates_since_boot": 0
+    },
+    {
+      "dialog_id": "dlg-1791454014225-zoghbe5",
+      "task_id": "s1-rmuzdgs298252-T1",
+      "state": "INITIATED",
+      "restored": true,
+      "terminal": false,
+      "next_seq": 1,
+      "processed_count": 0,
+      "pending_seqs": [],
+      "side_effects_since_boot": 0,
+      "duplicates_since_boot": 0
+    },
+    {
+      "dialog_id": "dlg-1791454014184-q0ex6zb",
+      "task_id": "task-fixture",
+      "state": "PROCESSING",
+      "restored": true,
+      "terminal": false,
+      "next_seq": 4,
+      "processed_count": 2,
+      "pending_seqs": [
+        2,
+        3
+      ],
+      "side_effects_since_boot": 0,
+      "duplicates_since_boot": 0
+    }
+  ]
+}

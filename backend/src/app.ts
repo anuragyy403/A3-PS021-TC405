@@ -1,67 +1,50 @@
 /**
  * Express application factory.
  *
- * `createApp` is a pure function: it accepts the database instance and
- * returns a configured Express app.  This separation lets tests inject an
- * isolated in-memory database without starting a real HTTP server.
+ * `createApp` takes the SimulationRuntime — the only object routes talk to —
+ * and returns a configured Express app.  Tests build a runtime on a temp-file
+ * database and pass it in without starting a real HTTP server.
  *
- * Routes added in this phase:
- *   GET /health   — liveness probe
- *
- * Future phases will add:
- *   POST /api/dialogs
- *   GET  /api/dialogs
- *   GET  /api/dialogs/:id
- *   POST /api/requests
- *   POST /api/scenarios/:id/run
- *   GET  /api/events  (SSE)
- *   etc.
+ * Routes (docs/API_DESIGN.md §2):
+ *   GET  /health                                      E1
+ *   GET  /api/state                                   E2
+ *   GET  /api/dialogs                                 E3
+ *   GET  /api/dialogs/:dialogId                       E4
+ *   POST /api/dialogs                                 E5
+ *   POST /api/dialogs/:dialogId/requests              E6
+ *   POST /api/dialogs/:dialogId/requests/:seq/retry   E7
+ *   POST /api/dialogs/:dialogId/complete              E8
+ *   POST /api/dialogs/:dialogId/fail                  E9
+ *   POST /api/adapters/:adapter/restart               E10
+ *   GET  /api/scenarios                               E11
+ *   POST /api/scenarios/:id/run                       E12
+ *   GET  /api/events                                  E13
+ *   POST /api/reset                                   E14
  */
 
-import express, {
-  type Request,
-  type Response,
-  type NextFunction,
-  type Express,
-} from 'express';
-import type { Database } from 'sql.js';
-import { AppError } from './errors.js';
-import { logger } from './logger.js';
+import express, { type Express, type Request, type Response } from 'express';
 
-export function createApp(db: Database): Express {
+import type { SimulationRuntime } from './runtime/SimulationRuntime.js';
+import { errorMiddleware, notFoundHandler } from './http/errorMiddleware.js';
+import { dialogRoutes } from './http/routes/dialogs.js';
+import { runtimeRoutes } from './http/routes/runtime.js';
+import { scenarioRoutes } from './http/routes/scenarios.js';
+
+export function createApp(runtime: SimulationRuntime): Express {
   const app = express();
 
-  // -------------------------------------------------------------------------
-  // Request parsing
-  // -------------------------------------------------------------------------
   app.use(express.json());
 
-  // -------------------------------------------------------------------------
-  // Routes: Phase 2.3 — foundation only
-  // -------------------------------------------------------------------------
-
   /**
-   * GET /health
-   *
-   * Liveness probe.  Returns 200 + JSON when the process is running and the
-   * database connection is open.  A closed DB means the server is shutting
-   * down gracefully; return 503 so a load balancer can route elsewhere.
+   * GET /health — liveness probe.
+   * 503 once the runtime (and its database handle) has been closed.
    */
   app.get('/health', (_req: Request, res: Response) => {
-    // sql.js databases are valid until explicitly closed; check by running
-    // a trivial query. If the DB was closed, db.run() will throw.
-    let dbStatus = 'open';
-    try {
-      db.run('SELECT 1');
-    } catch {
-      dbStatus = 'closed';
-    }
-
-    if (dbStatus === 'closed') {
+    if (!runtime.isOpen()) {
       res.status(503).json({
-        status:  'unhealthy',
-        reason:  'database connection closed',
-        ts:      new Date().toISOString(),
+        status: 'unhealthy',
+        reason: 'database connection closed',
+        ts:     new Date().toISOString(),
       });
       return;
     }
@@ -70,47 +53,20 @@ export function createApp(db: Database): Express {
       status:  'ok',
       service: 'nighthawks-backend',
       version: '1.0.0',
-      db:      dbStatus,
+      db:      'open',
       ts:      new Date().toISOString(),
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 404 handler (must come AFTER all route registrations)
-  // -------------------------------------------------------------------------
-  app.use((_req: Request, res: Response) => {
-    res.status(404).json({ error: 'NOT_FOUND', message: 'Route not found' });
-  });
+  app.use('/api', runtimeRoutes(runtime));
+  app.use('/api', dialogRoutes(runtime));
+  app.use('/api', scenarioRoutes(runtime));
 
-  // -------------------------------------------------------------------------
-  // Centralised error handler
-  // Express identifies error middleware by arity (four parameters).
-  // -------------------------------------------------------------------------
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof AppError) {
-      // Operational errors: known, expected, safe to surface
-      logger.warn('operational error', { code: err.code, message: err.message, status: err.statusCode });
-      res.status(err.statusCode).json({
-        error:   err.code,
-        message: err.message,
-        status:  err.statusCode,
-      });
-      return;
-    }
+  // Unknown route → 404 (must come after all routes)
+  app.use(notFoundHandler);
 
-    // Unexpected errors: log fully, return minimal response (no stack traces)
-    logger.error('unhandled error', {
-      message: err instanceof Error ? err.message : String(err),
-      stack:   err instanceof Error ? err.stack : undefined,
-    });
-
-    res.status(500).json({
-      error:   'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected error occurred',
-      status:  500,
-    });
-  });
+  // Centralised error handler (§5)
+  app.use(errorMiddleware);
 
   return app;
 }
