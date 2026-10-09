@@ -1,6 +1,6 @@
 /**
- * Pure mappers: backend API JSON → the object contract the dashboard already
- * consumes (the shape useCorrelationEngine() returns).  No React, no I/O.
+ * Pure mappers: backend API JSON → the objects the dashboard components read.
+ * No React, no I/O.
  *
  * Honesty rules (docs/API_DESIGN.md §7, §11):
  *   - every number comes from a backend field; fields with no backend source
@@ -30,7 +30,6 @@ export function emptyMetrics() {
   return {
     packets: 0,
     dedup: 0,
-    suppressed: 0,
     sideEffects: 0,
     recoveryAttempted: 0,
     recoverySucceeded: 0,
@@ -40,15 +39,9 @@ export function emptyMetrics() {
     committed: 0,
     recovered: 0,
     failed: 0,
-    buffered: 0,
-    avgLatencyMs: null,
-    pps: 0,
-    peakPps: 0,
-    walLsn: 0,
     durableDialogs: 0,
     bootAt: null,
     uptimeMs: 0,
-    // backend-only extras (undefined in the simulation engine)
     inProgress: 0,
     notStarted: 0,
     restoredOpen: 0,
@@ -91,7 +84,6 @@ export function mapMetrics(metrics, runtime, summaries) {
     ...emptyMetrics(),
     packets: metrics.transport_attempts ?? 0,          // durable: SUM(attempts)
     dedup: metrics.duplicates_since_boot ?? 0,          // since server start
-    suppressed: metrics.duplicates_since_boot ?? 0,
     sideEffects: metrics.processed_count ?? 0,          // durable "work done"
     recoveryAttempted: attempted,                       // restored dialogs that have finished
     recoverySucceeded: succeeded,                       // of those, finished RECOVERED
@@ -159,7 +151,6 @@ export function mapLedger(detail) {
     seq: row.seq,
     status: mapLedgerStatus(row.status),
     attempts: row.attempts ?? 0,
-    tx: null,
     at: processedAt.has(row.seq) ? toMs(processedAt.get(row.seq)) : null,
     backendStatus: row.status,
   }));
@@ -172,7 +163,7 @@ export function createdAtFromId(dialogId) {
 }
 
 /**
- * One dialog in the shape of the old engine's toView().  `detail` (E4) is
+ * One dialog as TaskList / ManualControls read it.  `detail` (E4) is
  * optional: without it the ledger is empty.
  */
 export function mapDialogView(summary, detail) {
@@ -183,27 +174,18 @@ export function mapDialogView(summary, detail) {
   return {
     id: summary.dialog_id,
     taskId: summary.task_id,
-    protocol: null,                                  // dropped (§11)
     state: summary.state,
-    history: [],                                     // not persisted by the backend
     ledger: mapLedger(detail),
     appliedOrder,
     appliedCount: summary.processed_count ?? 0,
     nextSeq: summary.next_seq ?? 1,
-    buffered: [],                                    // no reorder buffer in the backend
-    missing: [],                                     // no gap detection in the backend
     pendingSeqs: summary.pending_seqs ?? [],
     sideEffects: summary.processed_count ?? 0,       // durable work done
     sideEffectsSinceBoot: summary.side_effects_since_boot ?? 0,
-    suppressed: summary.duplicates_since_boot ?? 0,
+    suppressed: summary.duplicates_since_boot ?? 0,  // in memory, since server start
     restored: Boolean(summary.restored),
-    restarts: 0,
     createdAt: createdAtFromId(summary.dialog_id),
-    terminalAt: null,
-    latencyMs: null,
     settled: Boolean(summary.terminal ?? TERMINAL.has(summary.state)),
-    lastTx: null,
-    envelope: null,                                  // dropped (§11)
   };
 }
 
@@ -259,7 +241,7 @@ function describe(e) {
       return [kind, `state ${d.from} → ${d.to} · ${d.reason ?? ''}`.trim()];
     }
     case 'dialog_recovered':
-      return ['recovery', `dialog rehydrated from the SQLite file · state ${d.state}, next_seq=${d.next_seq}, pending=[${(d.pending_seqs ?? []).join(', ')}]`,
+      return ['recovery', `dialog reloaded from the SQLite file · state ${d.state}, next_seq=${d.next_seq}, pending=[${(d.pending_seqs ?? []).join(', ')}]`,
         { next_sequence: d.next_seq }];
     case 'adapter_restarted':
       return d.phase === 'end'
@@ -296,7 +278,6 @@ export function mapEventToLog(event) {
     at,
     ts: new Date(at).toISOString(),
     clock: clockStamp(at),
-    tx: null,
     kind,
     layer,
     dialogId: event.dialog_id ?? '-',
@@ -479,7 +460,6 @@ export function noticeLog(kind, msg, meta = {}) {
     at,
     ts: new Date(at).toISOString(),
     clock: clockStamp(at),
-    tx: null,
     kind,
     layer: 'control',
     dialogId: '-',

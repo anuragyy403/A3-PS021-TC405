@@ -174,7 +174,7 @@ TypeScript: `AdapterRequest` / `AdapterResponse` in `adapters/types.ts`. They ar
 
 ## 5. Lifecycle
 
-Exactly five states (`LIFECYCLE_STATES`). There is no `WAITING_ACK` in the backend; that state exists only in the separate frontend browser simulation.
+Exactly five states (`LIFECYCLE_STATES`). There is no `WAITING_ACK`; the old frontend simulation that had one was removed in Phase 8, and the dashboard shows these five states.
 
 | From | To | Triggered by | Condition |
 |---|---|---|---|

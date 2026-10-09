@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { TONE_CLASSES } from './ui/tokens.js';
 
 /**
- * Turning the engine's wire feed into animation.
+ * Turning the backend's wire feed (mappers.mapEventToWire) into animation.
  *
  * The animations are deliberately imperative rather than React state: a busy
  * demo can emit a dozen packets a second, and re-rendering the whole panel for
@@ -22,7 +22,7 @@ const DB_HOST = 'pointer-events-none absolute inset-0 z-20 grid place-items-cent
 const DB_BODY = 'animate-marker-pop absolute grid h-10 w-10 place-items-center rounded-2xl text-[17px] font-bold ring-1 backdrop-blur-sm';
 
 /**
- * How each engine wire phase is drawn.
+ * How each wire phase is drawn (exactly the phases mappers.js produces).
  *
  * `fly` travels the whole channel, `mark` appears in place at `at`% of the
  * channel, and `db` appears over the saved-state database. Glyphs are plain
@@ -31,15 +31,11 @@ const DB_BODY = 'animate-marker-pop absolute grid h-10 w-10 place-items-center r
  */
 const PHASE_VISUALS = {
   sent: { kind: 'fly', toneName: 'info' },
-  nack: { kind: 'fly', toneName: 'warn', back: true, glyph: '?' },
   resent: { kind: 'fly', toneName: 'warn', glyph: '↻' },
   delivered: { kind: 'mark', toneName: 'good', glyph: '✓', at: 100 },
-  sorted: { kind: 'mark', toneName: 'good', glyph: '✓', at: 100 },
   done: { kind: 'mark', toneName: 'good', glyph: '✓', at: 100 },
   duplicate: { kind: 'mark', toneName: 'duplicate', glyph: '⊘', at: 100 },
-  held: { kind: 'mark', toneName: 'warn', glyph: '⋯', at: 66 },
   dropped: { kind: 'mark', toneName: 'bad', glyph: '✕', at: 56 },
-  partition: { kind: 'mark', toneName: 'bad', glyph: '✕', at: 50 },
   failed: { kind: 'mark', toneName: 'bad', glyph: '✕', at: 100 },
   restored: { kind: 'db', toneName: 'info', glyph: '↺' },
 };

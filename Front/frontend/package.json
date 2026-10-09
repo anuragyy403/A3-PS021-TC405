@@ -1,15 +1,15 @@
 {
-  "name": "nighthawks-adapter-a",
+  "name": "nighthawks-dashboard",
   "private": true,
   "version": "1.0.0",
-  "description": "Nighthawks - AIORI-3 Track 6G experiment PS-021: dialog correlation, deduplication and crash recovery across heterogeneous agent adapters.",
+  "description": "Nighthawks PS-021 (AIORI-3): experimental dashboard for the dialog correlation and recovery backend prototype. Reads everything from the backend API.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint src",
-    "test": "node tests/conformance.mjs && node tests/mappers.mjs && node tests/messages.mjs && node tests/backendEngine.mjs"
+    "test": "node tests/mappers.mjs && node tests/messages.mjs && node tests/backendEngine.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.383.0",

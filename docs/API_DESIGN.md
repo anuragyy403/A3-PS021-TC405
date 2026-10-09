@@ -516,6 +516,8 @@ The body must be `{ "confirm": "RESET" }`. Tests use a temp `DB_PATH` per test f
 
 Legend: **Served** (endpoint gives it), **Derived** (UI computes from served data), **UI-only** (presentation/animation state, stays in the frontend), **Dropped** (simulation feature not required by PS-021 or not backed by the backend; removed or reworked in Phases 7–8).
 
+> **Phase 8 status (2026-10-09).** `useCorrelationEngine`, `protocol.js` and the `VITE_ENGINE` switch are deleted; `src/api/useBackendEngine.js` is the only engine. Every row marked **Dropped** below is now **removed** from the frontend code (no placeholder fields remain), together with `dispatch`, `throughput`, `clearBlackholes` and the `metrics.suppressed` alias. The **Derived** rows `history`, `restarts`, `terminalAt`, `latencyMs`, `avgLatencyMs`, `pps`/`peakPps` were not implemented and are not in the mapped objects. Manual sending uses E5–E10 directly (`ManualControls.jsx`). The tables below are the Phase 5 plan, kept for reference; `tests/mappers.mjs` holds the frozen list of fields the components actually read.
+
 ### 11.1 Engine return value (`useCorrelationEngine`)
 
 | Field / function | Class | Source / note |

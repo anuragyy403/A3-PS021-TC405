@@ -82,33 +82,6 @@ export function ProgressBar({ value, tone: toneName = 'info', indeterminate = fa
   );
 }
 
-/** On/off switch with a label, used by the manual test controls. */
-export function Toggle({ checked, onChange, label, tone: toneName = 'info', disabled = false }) {
-  const t = tone(toneName);
-
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`inline-flex items-center gap-2.5 rounded-xl border px-3 py-2 text-[12.5px] font-medium transition-all duration-200 disabled:opacity-40 ${
-        checked ? `${t.border} ${t.bg} ${t.text}` : 'border-white/[0.07] bg-white/[0.02] text-slate-400 hover:border-white/15 hover:text-slate-200'
-      }`}
-    >
-      <span className={`relative flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${checked ? t.dot : 'bg-white/15'}`}>
-        <span
-          className={`h-4 w-4 rounded-full bg-night-950 shadow-sm transition-transform duration-200 ${
-            checked ? 'translate-x-4' : 'translate-x-0'
-          }`}
-        />
-      </span>
-      {label}
-    </button>
-  );
-}
-
 /** Small labelled figure used inside panels. */
 export function Figure({ label, value, sub, tone: toneName = 'info' }) {
   const t = tone(toneName);

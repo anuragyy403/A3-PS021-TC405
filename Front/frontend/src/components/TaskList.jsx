@@ -9,7 +9,6 @@ function toneForState(state) {
   if (state === 'COMMITTED') return 'good';
   if (state === 'RECOVERED') return 'info';
   if (state === 'FAILED') return 'bad';
-  if (state === 'WAITING_ACK') return 'warn';
   if (state === 'PROCESSING') return 'info';
   return 'idle';
 }
@@ -18,7 +17,6 @@ function toneForState(state) {
 function PacketStrip({ ledger }) {
   const STYLE = {
     applied: { cls: 'bg-emerald-400', label: 'processed' },
-    buffered: { cls: 'bg-amber-400', label: 'held, waiting for an earlier packet' },
     missing: { cls: 'bg-rose-400', label: 'sent, not processed yet' },
     pending: { cls: 'bg-slate-700', label: 'not sent yet' },
   };
@@ -39,9 +37,8 @@ function PacketStrip({ ledger }) {
 /**
  * Every task the system knows about.
  *
- * Replaces the old correlation registry: the same information, but framed as
- * "what is this task and how far along is it" rather than raw dialog identifiers
- * and write-ahead-log offsets.
+ * Framed as "what is this task and how far along is it"; the raw dialog id is
+ * shown small, and the per-packet strip comes from the backend ledger.
  */
 export default function TaskList({ dialogs, selectedId, onSelect }) {
   const [showFinished, setShowFinished] = useState(true);
@@ -121,8 +118,8 @@ export default function TaskList({ dialogs, selectedId, onSelect }) {
                     </div>
 
                     {dialog.suppressed > 0 ? (
-                      <p className="mt-2 text-[11.5px] font-medium text-violet-300">
-                        {dialog.suppressed} duplicate{dialog.suppressed > 1 ? 's' : ''} blocked
+                      <p className="mt-2 text-[11.5px] font-medium text-violet-300" title="Counted in memory since the backend last started; it resets on a restart.">
+                        {dialog.suppressed} duplicate{dialog.suppressed > 1 ? 's' : ''} blocked since server start
                       </p>
                     ) : null}
                   </button>

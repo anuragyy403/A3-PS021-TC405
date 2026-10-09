@@ -5,11 +5,11 @@
 
 > A prototype that connects two mock agent adapters and shows how explicit dialog IDs, lifecycle states, request deduplication, and durable state let a task survive a disconnect or restart without losing its identity or repeating side effects that were already durably recorded.
 
-> **Status (Phase 6, 2026-10-08).**
+> **Status (Phase 8, 2026-10-09).**
 >
-> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md).
+> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md). The React dashboard in `Front/frontend/` reads everything from that API (the old in-browser simulation was removed in Phase 8).
 >
-> **Not yet implemented:** connecting the React frontend to the backend (the frontend is still a standalone browser simulation); the live demonstration; the final deliverables (PDF, repository hand-over).
+> **Not yet implemented:** end-to-end browser tests; the scripted live demonstration; the final deliverables (PDF, repository hand-over).
 >
 > Sections labelled **Requirement** come from the official Problem Statement. Sections marked **Pending** describe work that has not been done yet.
 
@@ -364,7 +364,7 @@ SQL only, persisted after every mutation:
 Vitest suites that inject drops and restarts and assert outcomes. A "restart" closes the database handle and boots fresh adapters from the same file.
 
 ### Frontend (`Front/frontend/`)
-A separate React browser simulation with its own engine (`src/lib/useCorrelationEngine.js`). It is **not connected to the backend** (see [Section 31](#31-mcp-and-a2a-context) and [Section 33](#33-limitations)).
+A React dashboard driven entirely by the HTTP API: `src/api/useBackendEngine.js` polls events, state and ledgers, and `src/components/ManualControls.jsx` sends one API call per button (new task, send with an optional lost request/reply, retry, duplicate, complete, abort, restart). It shows the backend's five lifecycle states and holds no experiment state of its own. See `Front/frontend/README.md`.
 
 ---
 
@@ -451,8 +451,6 @@ Invalid transitions throw `InvalidTransitionError` (`DialogManager.test.ts`, Tes
 
 ### Why explicit lifecycle management is required
 Without explicit states, an adapter cannot answer "what do I do with this request?". A request for an already-processed `seq` on a finished dialog returns the recorded result; a request for a new `seq` on a finished dialog is rejected (`DIALOG_TERMINAL`).
-
-> The frontend simulation has an extra `WAITING_ACK` state, used for its UI animation. It is not part of the backend lifecycle.
 
 ---
 
@@ -825,7 +823,7 @@ Known gap: the window between `run_side_effect` and `requests.insert`. See [Sect
 | Validation | zod | Runtime schemas for the record types (API boundaries later) |
 | Transport between adapters | In-process `Transport` class | Deterministic fault injection; not a real MCP/A2A transport |
 | Test framework | Vitest 1.6 (+ supertest for `/health`) | Runs the five scenarios and unit suites |
-| Frontend | React 18, Vite 5, Tailwind CSS 3 | Standalone browser simulation / dashboard |
+| Frontend | React 18, Vite 5, Tailwind CSS 3 | Dashboard over the backend HTTP API |
 | Diagrams | Mermaid | Renders natively on GitHub |
 
 ---
@@ -875,12 +873,13 @@ Nighthawks/
 │       ├── observedTransport.test.ts, eventlog.test.ts, queries.test.ts
 │       └── health.test.ts
 └── Front/
-    └── frontend/                  # standalone React simulation (not wired to backend)
+    └── frontend/                  # React dashboard over the backend API
         ├── src/
         │   ├── App.jsx
-        │   ├── components/
-        │   └── lib/               # useCorrelationEngine.js, constants, protocol, narrate
-        └── tests/conformance.mjs
+        │   ├── api/               # client, useBackendEngine, mappers, messages
+        │   ├── components/        # panels, ManualControls
+        │   └── lib/               # constants, narrate, format
+        └── tests/                 # mappers, messages, backendEngine (+ fixtures)
 ```
 
 The organizers' *Proposed-structure-hackathon.pdf* layout has not yet been applied (Phase 11).
@@ -903,7 +902,7 @@ cd backend
 npm install
 ```
 
-Frontend (optional, standalone simulation):
+Frontend (dashboard; needs the backend running):
 
 ```bash
 cd Front/frontend
@@ -954,14 +953,14 @@ curl -s -X POST localhost:3001/api/scenarios/4/run -H 'content-type: application
 
 The retry returns `"outcome":"duplicate"`; the scenario run returns its steps, checks and final states.
 
-Frontend simulation (does **not** talk to the backend):
+Dashboard (start the backend first; Vite proxies `/api` and `/health` to `VITE_BACKEND_URL`, default `http://localhost:3001`):
 
 ```bash
 cd Front/frontend
 npm run dev
 ```
 
-Open the URL Vite prints (default `http://localhost:5173`). The scenario buttons still run the browser-side simulation only; wiring the UI to the API is Phase 7.
+Open the URL Vite prints (default `http://localhost:5173`). The demonstration cards run the backend scenarios; the manual controls call the API directly.
 
 ---
 
@@ -982,13 +981,13 @@ Backend (from `backend/`):
 | Deduplication / adapters | `npx vitest run tests/adapters.test.ts` | 29 tests pass |
 | Type check | `npm run typecheck` | No errors |
 
-Frontend (from `Front/frontend/`): `npm test` runs `tests/conformance.mjs`, a headless check of the browser simulation (not of the backend).
+Frontend (from `Front/frontend/`): `npm test` runs `tests/mappers.mjs` (mappers against captured backend responses), `tests/messages.mjs` (user-facing texts) and `tests/backendEngine.mjs` (the polling hook, manual controls and the whole App in jsdom against a scripted fake `fetch`). No backend is needed.
 
 ---
 
 ## 26. Demonstration Guide
 
-> **Pending (Phase 10).** The API exists; the live demo still needs the frontend connected to it (Phase 7). Outline only:
+> **Pending (Phase 10).** The dashboard is connected to the API; the scripted demo is still to be written. Outline only:
 
 1. Start the backend; open the dashboard.
 2. Create a task/dialog; show `dialog_id`, `task_id`, `INITIATED`.
@@ -1054,7 +1053,7 @@ A run of the compiled server returned `passed` for all five, with Scenario 1 end
 | R5: Five disconnect/retry scenarios | `tests/scenarios.test.ts`; scripts in `backend/src/scenarios/`, runnable via `POST /api/scenarios/:id/run` | [Section 28](#28-results); `tests/scenarioRunner.test.ts`, `tests/scenariosApi.test.ts` |
 | R6: Explicit lifecycle states and valid transitions | `LIFECYCLE_STATES`, `VALID_TRANSITIONS`, `DialogManager.transition`; triggers in the adapters | `tests/DialogManager.test.ts`; `tests/lifecycle.test.ts` |
 | R7: Mentor-selected pinned or clearly labelled experimental schema | Clearly labelled experimental schema `v0.1-experimental` (no mentor draft pinned) | `docs/EXPERIMENTAL_SCHEMA.md` |
-| R8: No overclaiming (IETF, MCP/A2A, exactly-once) | Non-claims in Sections 11, 28, 30, 31, 33 and the schema doc; frontend wording no longer says "exactly once" | This README; `docs/EXPERIMENTAL_SCHEMA.md` §9 |
+| R8: No overclaiming (IETF, MCP/A2A, exactly-once) | Non-claims in Sections 11, 28, 30, 31, 33 and the schema doc; dashboard footer states the non-claims; no MCP/A2A tags in the UI | This README; `docs/EXPERIMENTAL_SCHEMA.md` §9 |
 | HTTP API controlling the adapters (project goal for the demo) | `backend/src/http/`, `backend/src/runtime/` | `tests/api.test.ts`, `tests/scenariosApi.test.ts`, `docs/API_DESIGN.md` |
 | Demo: identity preservation and duplicate rejection | Shown by the scenario tests and the API today | Live demo pending (Phase 10) |
 | Deliverable: private repo, collaborator, ownership transfer, team-named repo | [Section 42](#42-hackathon-deliverables-checklist) | Pending (Phase 11) |
@@ -1084,7 +1083,7 @@ The Problem Statement mentions Anthropic's Model Context Protocol (MCP) and Goog
 
 This prototype uses **two mock adapters** to study that problem in a controlled way. It does **not** implement MCP or A2A, and does not claim interoperability with them.
 
-**Frontend note.** The browser simulation in `Front/frontend/` (`src/lib/protocol.js`) wraps each frame in an **MCP-style** (JSON-RPC 2.0 `tools/call`) or **A2A-style** (task + message) envelope. Each scenario is tagged `MCP` or `A2A` in `src/lib/constants.js`, the envelope is attached to the simulation's log entries, and the scenario narration names the format ("standard tool-call format" / "agent hand-off format"). These envelopes are **illustrative, for visualization only**. They are not an MCP or A2A implementation, they are not exchanged with any MCP or A2A system, and they are not an interoperability claim. The backend does not use them.
+**Frontend note.** Until Phase 8 the browser simulation wrapped frames in illustrative MCP-style / A2A-style envelopes and tagged scenarios `MCP` / `A2A`. That simulation and those tags were removed in Phase 8; the dashboard now shows only the backend's mock-adapter model.
 
 ---
 
@@ -1116,7 +1115,7 @@ This prototype uses **two mock adapters** to study that problem in a controlled 
 - **Non-atomic persistence:** `persistToDisk` overwrites the file in place (`fs.writeFileSync`); a crash during the write could corrupt the database.
 - **Retry-budget accounting:** `attempts` also counts attempts that got an `error` reply, so a request can reach `maxAttempts` with fewer dropped messages.
 - **API is local and unauthenticated:** one runtime, one lock; a mutation during a scenario run gets `409 RUNTIME_BUSY`; activity events are in memory only (lost when the server exits).
-- **Frontend is a standalone simulation** with its own 6-state model (including `WAITING_ACK`), reorder buffer and NACK logic; its "database" is an in-browser JavaScript `Map`, not the backend's SQLite file.
+- **Dashboard polls; it does not stream:** it reads `/api/events` every few hundred ms while the tab is visible and pauses in a hidden tab. Per-task duplicate counts are in memory since server start and reset on a restart.
 - It does **not** implement MCP or A2A, and does not claim interoperability with them.
 - It does **not** implement a finalized IETF standard. The schema is experimental.
 - Concurrent duplicate requests, multi-node deployment, and distributed consensus are out of scope.
@@ -1131,7 +1130,8 @@ This prototype uses **two mock adapters** to study that problem in a controlled 
 - Two mock adapters, one experimental schema, explicit lifecycle states — **done**
 - Durable state and deduplication — **done**
 - Five simulated disconnect/retry scenarios — **done (automated tests)**
-- HTTP API, frontend connected to the backend, live demo — **pending (Phases 5–10)**
+- HTTP API and dashboard connected to it — **done (Phases 5–8)**
+- End-to-end browser tests, scripted live demo — **pending (Phases 9–10)**
 
 ### Future work (not implemented)
 

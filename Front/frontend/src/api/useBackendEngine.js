@@ -20,18 +20,17 @@ import {
 import { dialogMessage, errorMessage, outcomeMessage, restartMessage } from './messages.js';
 
 /**
- * Backend-driven engine (Phase 7a).
- *
- * Returns the same object contract as useCorrelationEngine(), but every value
- * comes from the backend API (docs/API_DESIGN.md).  The browser holds no
- * authoritative state: it polls
+ * The dashboard's only engine: every value comes from the backend API
+ * (docs/API_DESIGN.md).  The browser holds no authoritative state: it polls
  *   GET /api/events?since=<cursor>   every timing.eventsMs while the tab is visible
  *   GET /api/state                   after new events, and at least every timing.stateMaxAgeMs
  *   GET /api/dialogs/:id             only for dialogs touched by new events (ledgers)
  *   GET /api/scenarios               on load, after a scenario finishes, after a reset
  *
- * Phase 7b adds the manual actions (one API call each, never automatic), a
+ * It also exposes the manual actions (one API call each, never automatic), a
  * `busy` flag for disabling controls, and a dismissible error banner.
+ * `simulation` is the state of the scenario run being shown (running / steps /
+ * assertions / result), not an in-browser simulation.
  */
 
 /** Default timings (ms).  Tests pass shorter ones via useBackendEngine({ timing }). */
@@ -431,10 +430,6 @@ function createController(set, timing) {
         pollNow();
       }
     },
-
-    manualNotice() {
-      notice('success', 'manual sending is not available in live-backend mode yet · use the demonstrations (manual controls arrive in Phase 7b)');
-    },
   };
 }
 
@@ -482,18 +477,15 @@ export function useBackendEngine(options) {
     dialogs,
     nodes,
     metrics,
-    throughput: [],               // no backend source
     simulation,
     scenarioResults,
     connected,
     busy,
     banner,
     dismissBanner: () => ctl.dismissBanner(),
-    dispatch: () => ctl.manualNotice(),
     runScenario: (id) => ctl.runScenario(id),
     runAllScenarios: () => ctl.runAllScenarios(),
     clearLogs: () => ctl.clearLogs(),
-    clearBlackholes: () => ctl.manualNotice(),
     resetEngine: () => ctl.reset(),
     /** Manual controls (Phase 7b): each is exactly one API call. */
     actions: {

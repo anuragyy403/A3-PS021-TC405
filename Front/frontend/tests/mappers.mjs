@@ -4,8 +4,7 @@
  *   node tests/mappers.mjs
  *
  * Fixtures in tests/fixtures/ are REAL backend responses captured with
- * tests/capture-fixtures.mjs.  Plain node + node:assert, same reporting style
- * as tests/conformance.mjs.
+ * tests/capture-fixtures.mjs.  Plain node + node:assert.
  */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -35,9 +34,8 @@ import {
   resolveEventPage,
   scenarioRunIdFromEvents,
 } from '../src/api/mappers.js';
-import { selectEngine } from '../src/api/engine.js';
 import { describeTask, narrate } from '../src/lib/narrate.js';
-import { LAYERS, LOG_KINDS } from '../src/lib/constants.js';
+import { LAYERS, LIFECYCLE_STATES, LOG_KINDS, SCENARIOS, STATE_PLAIN, STATE_STYLE, TERMINAL_STATES, VALID_TRANSITIONS } from '../src/lib/constants.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -64,12 +62,23 @@ const KNOWN_PHASES = new Set(
     .matchAll(/^\s+(\w+):\s*\{/gm)].map((m) => m[1]),
 );
 
-/** Field names of the old engine's toView() (the contract TaskList & co. read). */
-const engineSource = await sourceOf('src', 'lib', 'useCorrelationEngine.js');
-const toViewBody = engineSource.slice(engineSource.indexOf('function toView'), engineSource.indexOf('\n}\n', engineSource.indexOf('function toView')));
-const TOVIEW_FIELDS = [...toViewBody.slice(toViewBody.indexOf('return {')).matchAll(/^\s{4}(\w+)[:,]/gm)].map((m) => m[1]);
-const metricsBody = engineSource.slice(engineSource.indexOf('function computeMetrics'));
-const METRIC_FIELDS = [...metricsBody.slice(metricsBody.indexOf('return {'), metricsBody.indexOf('};')).matchAll(/^\s{6}(\w+):/gm)].map((m) => m[1]);
+
+/**
+ * Frozen contract: the fields the components actually read (grep of
+ * src/components + App.jsx, Phase 8).  If a component starts reading a new
+ * field, add it here and to the mapper.
+ */
+const METRIC_FIELDS = ['activeDialogs', 'committed', 'dedup', 'durableDialogs', 'failed', 'inProgress', 'notStarted',
+  'packets', 'recovered', 'recoveryAttempted', 'recoveryRate', 'recoverySucceeded', 'restoredOpen', 'sideEffects',
+  'totalDialogs', 'uptimeMs'];
+const VIEW_FIELDS = ['id', 'taskId', 'state', 'ledger', 'nextSeq', 'pendingSeqs', 'settled', 'sideEffects', 'suppressed'];
+const LEDGER_ROW_FIELDS = ['seq', 'status', 'backendStatus'];
+const LOG_FIELDS = ['id', 'origin', 'clock', 'kind', 'layer', 'msg', 'meta'];
+const WIRE_FIELDS = ['id', 'phase', 'seq'];
+
+/** Backend sources the UI must agree with (read as text; the backend is not imported). */
+const backendTypes = await sourceOf('..', '..', 'backend', 'src', 'types', 'index.ts');
+const backendScenarios = await sourceOf('..', '..', 'backend', 'src', 'scenarios', 'index.ts');
 
 const results = [];
 function test(label, fn) {
@@ -89,8 +98,7 @@ console.log(`\n${BOLD}Nighthawks - backend mapper tests${RESET}\n`);
 // Metrics (DECISION 6)
 // ---------------------------------------------------------------------------
 
-test('metrics: every old-engine metric field exists in the mapped object', () => {
-  assert.ok(METRIC_FIELDS.length >= 15, `parsed ${METRIC_FIELDS.length} fields`);
+test('metrics: every field the components read exists in the mapped object', () => {
   const mapped = mapMetrics(state.metrics, state.runtime);
   for (const f of METRIC_FIELDS) assert.ok(f in mapped, `missing ${f}`);
 });
@@ -102,7 +110,6 @@ test('metrics: counters come from the documented backend fields', () => {
   assert.equal(mapped.sideEffects, m.processed_count);
   assert.equal(mapped.packets, m.transport_attempts);
   assert.equal(mapped.dedup, m.duplicates_since_boot);
-  assert.equal(mapped.suppressed, m.duplicates_since_boot);
   assert.equal(mapped.recoveryAttempted, m.restored_total);
   assert.equal(mapped.recoverySucceeded, by.RECOVERED);
   assert.equal(mapped.recovered, by.RECOVERED);
@@ -116,13 +123,9 @@ test('metrics: counters come from the documented backend fields', () => {
   assert.equal(mapped.recoveryRate, m.restored_total ? (by.RECOVERED / m.restored_total) * 100 : null);
 });
 
-test('metrics: fields with no backend source are zero/null, never invented', () => {
+test('metrics: no placeholder fields from the removed browser simulation', () => {
   const mapped = mapMetrics(state.metrics, state.runtime);
-  assert.equal(mapped.buffered, 0);
-  assert.equal(mapped.pps, 0);
-  assert.equal(mapped.peakPps, 0);
-  assert.equal(mapped.walLsn, 0);
-  assert.equal(mapped.avgLatencyMs, null);
+  for (const f of ['buffered', 'pps', 'peakPps', 'walLsn', 'avgLatencyMs', 'suppressed']) assert.ok(!(f in mapped), `unexpected ${f}`);
   assert.deepEqual(mapMetrics(undefined), emptyMetrics());
   assert.equal(emptyMetrics().recoveryRate, null);   // MetricBar shows its "100%" empty state
 });
@@ -189,10 +192,10 @@ test('ledger: backend statuses map onto statuses TaskList renders', () => {
   assert.deepEqual(mapLedger(undefined), []);
 });
 
-test('dialog view: every toView() field exists, values from the summary/detail', () => {
-  assert.ok(TOVIEW_FIELDS.length >= 20, `parsed ${TOVIEW_FIELDS.length} fields`);
+test('dialog view: every field the components read exists, values from the summary/detail', () => {
   const view = mapDialogView(detail.dialog, detail);
-  for (const f of TOVIEW_FIELDS) assert.ok(f in view, `missing ${f}`);
+  for (const f of VIEW_FIELDS) assert.ok(f in view, `missing ${f}`);
+  for (const row of view.ledger) for (const f of LEDGER_ROW_FIELDS) assert.ok(f in row, `ledger row missing ${f}`);
   assert.equal(view.id, detail.dialog.dialog_id);
   assert.equal(view.taskId, 'task-fixture');
   assert.equal(view.state, 'PROCESSING');
@@ -201,11 +204,10 @@ test('dialog view: every toView() field exists, values from the summary/detail',
   assert.deepEqual(view.appliedOrder, [1, 2]);
   assert.equal(view.nextSeq, 4);
   assert.deepEqual(view.pendingSeqs, [2, 3]);
-  assert.deepEqual(view.buffered, []);
-  assert.deepEqual(view.missing, []);
   assert.equal(view.settled, false);
-  assert.equal(view.protocol, null);
-  assert.equal(view.envelope, null);
+  for (const f of ['buffered', 'missing', 'protocol', 'envelope', 'history', 'lastTx', 'restarts', 'terminalAt', 'latencyMs']) {
+    assert.ok(!(f in view), `unexpected placeholder ${f}`);
+  }
   assert.equal(view.createdAt, createdAtFromId(view.id));
 });
 
@@ -297,8 +299,8 @@ test('logs: narration of mapped events is accurate', () => {
 
   const recovered = first('dialog_recovered');
   const r = narrate(mapEventToLog(recovered));
-  assert.equal(r.headline, 'Unfinished task reloaded from the database');
-  assert.match(r.detail, new RegExp(`at packet ${recovered.details.next_seq}\\.`));
+  assert.equal(r.headline, 'Unfinished task reloaded from the SQLite file');
+  assert.match(r.detail, new RegExp(`gets packet ${recovered.details.next_seq}\\.`));
 
   const created = first('dialog_created');
   assert.equal(narrate(mapEventToLog(created)).headline, 'New task started');
@@ -365,19 +367,32 @@ test('logs: backend narration for retry, replies, refusals, acks, reset, demos',
   assert.equal(narrate(mapEventToLog(finished)).headline, `Demo ${finished.details.scenario_id} passed`);
 });
 
-test('narration: backend-only rules never fire for entries without origin (the simulation)', () => {
+test('narration: every fixture event narrates without simulation-only wording', () => {
+  const SIM_WORDS = /in order|out of order|held back|holding|gap|checkpoint|crashed|3 tries|confirmation|Waiting for/i;
   for (const e of events) {
     const entry = mapEventToLog(e);
     if (!entry) continue;
-    const { origin, ...simShaped } = entry;
-    assert.equal(origin, 'backend');
-    const sim = narrate(simShaped);
-    const backend = narrate(entry);
-    const typedRule = ['retry_sent', 'response_dropped', 'response_delivered', 'request_rejected', 'request_acked',
-      'adapter_restarted', 'runtime_reset', 'scenario_started', 'scenario_finished', 'request_dropped'].includes(e.type);
-    if (!typedRule) assert.deepEqual(sim, backend, `${e.type} narration must not depend on origin`);
-    else if (e.type !== 'request_dropped') assert.equal(sim.headline, entry.msg, `${e.type}: without origin it falls back to the message`);
+    for (const f of LOG_FIELDS) assert.ok(f in entry, `${e.type}: log entry missing ${f}`);
+    const spoken = narrate(entry);
+    assert.doesNotMatch(`${spoken.headline} ${spoken.detail ?? ''}`, SIM_WORDS, `${e.type}: ${spoken.headline}`);
+    // Scenario step texts are shown verbatim, never re-interpreted by a message rule.
+    if (e.type === 'scenario_step') assert.equal(spoken.headline, entry.msg, 'scenario steps are verbatim');
   }
+  const recovered = first('dialog_recovered');
+  const r = narrate(mapEventToLog(recovered));
+  assert.equal(r.headline, 'Unfinished task reloaded from the SQLite file');
+  assert.match(r.detail, new RegExp(`next new request gets packet ${recovered.details.next_seq}`));
+  // dashboard notices never match an event rule
+  assert.equal(narrate(noticeLog('success', 'manual restart A · whole backend process restarted')).headline, 'manual restart A · whole backend process restarted');
+});
+
+test('task line: one sentence per backend state, no simulation states', () => {
+  const base = { sideEffects: 2, ledger: [], nextSeq: 3 };
+  assert.equal(describeTask({ ...base, state: 'INITIATED' }), 'Created, waiting for the first request');
+  assert.equal(describeTask({ ...base, state: 'PROCESSING' }), '2 work items completed so far');
+  assert.equal(describeTask({ ...base, state: 'COMMITTED' }), 'All 2 work items completed, none repeated');
+  assert.equal(describeTask({ ...base, state: 'RECOVERED' }), 'Finished after a restart — 2 work items, none repeated');
+  assert.equal(describeTask({ ...base, state: 'FAILED' }), 'Stopped before finishing — the retry limit was reached or it was aborted');
 });
 
 test('logs: unknown and malformed events never crash', () => {
@@ -395,7 +410,8 @@ test('logs: unknown and malformed events never crash', () => {
 // ---------------------------------------------------------------------------
 
 test('wire: phases are exactly the documented mapping, all drawable by usePacketLayer', () => {
-  assert.ok(KNOWN_PHASES.size >= 10, `parsed ${KNOWN_PHASES.size} phases`);
+  // usePacketLayer draws exactly the phases the mapper can produce (no simulation-only phases)
+  assert.deepEqual([...KNOWN_PHASES].sort(), ['delivered', 'done', 'dropped', 'duplicate', 'failed', 'resent', 'restored', 'sent']);
   const expected = {
     request_sent: 'sent', retry_sent: 'resent', request_processed: 'delivered',
     duplicate_suppressed: 'duplicate', request_dropped: 'dropped', response_dropped: 'dropped',
@@ -499,12 +515,36 @@ test('local notices get unique string ids that cannot collide with event ids', (
   assert.equal(a.meta.source, 'dashboard');
 });
 
-test('engine selection: backend by default under Vite, sim on request, sim outside Vite', () => {
-  assert.equal(selectEngine({}), 'backend');
-  assert.equal(selectEngine({ VITE_ENGINE: 'backend' }), 'backend');
-  assert.equal(selectEngine({ VITE_ENGINE: 'sim' }), 'sim');
-  assert.equal(selectEngine({ VITE_ENGINE: 'anything-else' }), 'backend');
-  assert.equal(selectEngine(undefined), 'sim');
+test('lifecycle: exactly the five backend states and the backend transition table', () => {
+  const states = /LIFECYCLE_STATES = \[([^\]]*)\]/.exec(backendTypes)[1].match(/'(\w+)'/g).map((x) => x.slice(1, -1));
+  assert.deepEqual(LIFECYCLE_STATES, states);
+  assert.deepEqual(Object.keys(STATE_PLAIN), states);
+  assert.deepEqual(Object.keys(STATE_STYLE), states);
+  const table = backendTypes.slice(backendTypes.indexOf('VALID_TRANSITIONS'), backendTypes.indexOf('};', backendTypes.indexOf('VALID_TRANSITIONS')));
+  for (const from of states) {
+    const row = new RegExp(`${from}:\\s*\\[([^\\]]*)\\]`).exec(table)[1].match(/'(\w+)'/g)?.map((x) => x.slice(1, -1)) ?? [];
+    assert.deepEqual(VALID_TRANSITIONS[from], row, `transitions from ${from}`);
+  }
+  assert.deepEqual(TERMINAL_STATES, ['COMMITTED', 'RECOVERED', 'FAILED']);
+});
+
+test('scenario cards: five, titled exactly as the backend registry, no protocol tags', () => {
+  const titles = [...backendScenarios.matchAll(/(\d):\s*\{\s*title:\s*'([^']+)'/g)].map((m) => [Number(m[1]), m[2]]);
+  assert.equal(titles.length, 5);
+  assert.deepEqual(SCENARIOS.map((c) => c.id), [1, 2, 3, 4, 5]);
+  for (const [id, title] of titles) {
+    const card = SCENARIOS.find((c) => c.id === id);
+    assert.equal(`Scenario ${id} — ${card.title}`, title);
+    assert.ok(!('protocol' in card), `card ${id} still has a protocol tag`);
+    for (const f of ['tagline', 'description', 'outcome', 'watch']) assert.ok(card[f], `card ${id} missing ${f}`);
+  }
+});
+
+test('wire: every mapped event carries the fields usePacketLayer reads', () => {
+  for (const e of events) {
+    const w = mapEventToWire(e);
+    if (w) for (const f of WIRE_FIELDS) assert.ok(f in w, `${e.type}: wire missing ${f}`);
+  }
 });
 
 const failed = results.filter((r) => !r.ok);

@@ -4,8 +4,8 @@
  * Mounts the real hook inside a jsdom document against a scripted FAKE backend:
  * globalThis.fetch is replaced, nothing talks to a real server.  Timings are
  * shortened through useBackendEngine({ timing }).  The JSX components
- * (ManualControls, App) are bundled with esbuild exactly like
- * tests/conformance.mjs does.
+ * (ManualControls, App, TaskList, ActivityFeed) are bundled with esbuild and
+ * mounted in jsdom.
  */
 import { JSDOM } from 'jsdom';
 import { readFile } from 'node:fs/promises';
@@ -579,10 +579,10 @@ await test('unmount: all poll timers stopped; an in-flight poll does not resched
 });
 
 // ---------------------------------------------------------------------------
-// Components: ManualControls rules (D1/D2) and engine selection (sim vs backend)
+// Components: ManualControls rules (D1/D2) and the whole App against the fake backend
 // ---------------------------------------------------------------------------
 
-async function bundle(source, define = {}) {
+async function bundle(source) {
   const { build } = await import('esbuild');
   const { mkdir, writeFile } = await import('node:fs/promises');
   const { pathToFileURL } = await import('node:url');
@@ -594,7 +594,7 @@ async function bundle(source, define = {}) {
   await writeFile(entryFile, source, 'utf8');
   const out = await build({
     entryPoints: [entryFile], bundle: true, write: false, format: 'esm', platform: 'node', jsx: 'automatic',
-    loader: { '.js': 'jsx' }, external: ['react', 'react-dom', 'react-dom/client', 'lucide-react'], logLevel: 'silent', define,
+    loader: { '.js': 'jsx' }, external: ['react', 'react-dom', 'react-dom/client', 'lucide-react'], logLevel: 'silent',
   });
   await writeFile(outFile, out.outputFiles[0].text, 'utf8');
   return (await import(pathToFileURL(outFile).href)).default;
@@ -705,33 +705,79 @@ await test('ManualControls: restart shows recovered next_seq and pending seqs', 
   }
 });
 
-await test('engine selection: VITE_ENGINE=sim renders the old controls and makes no /api calls', async () => {
+const { SCENARIOS } = await import('../src/lib/constants.js');
+
+await test('App: renders every panel from the backend, no simulation UI, clean console', async () => {
   server = createFakeBackend();
-  const App = await bundle(`export { default } from ${JSON.stringify(`${src}/App.jsx`)};`, { 'import.meta.env': JSON.stringify({ VITE_ENGINE: 'sim' }) });
+  const errorsBefore = consoleErrors.length;
+  const App = await bundle(`export { default } from ${JSON.stringify(`${src}/App.jsx`)};`);
   const ui = await mountComponent(App, {});
   try {
-    await wait(100);
+    await waitFor(() => /Live backend(?! ·)/.test(ui.container.textContent), 'connected pill');
     const text = ui.container.textContent;
-    check(text.includes('Or try it yourself'), 'old sim controls');
-    check(!text.includes('Try it yourself — on the live backend'), 'no ManualControls');
-    equal(server.calls.length, 0, 'no fetch calls in sim mode');
+    check(text.includes('PS-021') && text.includes('AIORI-3'), 'experiment identity');
+    for (const label of ['Connection Status', 'Total Tasks Processed', 'Duplicates Blocked', 'Recovery Success Rate']) check(text.includes(label), `metric ${label}`);
+    for (const label of ['Sender Agent', 'Network Channel', 'Receiver Agent', 'Saved State']) check(text.includes(label), `pipeline ${label}`);
+    for (const label of ['Live message pipeline', 'Demonstrations', 'Tasks', 'What is happening']) check(text.includes(label), `panel ${label}`);
+    for (const card of SCENARIOS) check(text.includes(card.title) && text.includes(card.tagline), `scenario card ${card.id}`);
+    check(text.includes('Try it yourself — on the live backend'), 'ManualControls rendered');
+    check(text.includes('100%'), 'recovery rate empty state');
+    check(text.includes('Processes each new (dialog, seq) once; a repeat gets the stored answer.'), 'receiver card copy');
+    check(text.includes('Saved after every change; a restart reloads unfinished tasks from this file.'), 'storage card copy');
+    check(text.includes('this is not exactly-once delivery'), 'footer non-claim');
+    for (const gone of ['Browser simulation', 'Or try it yourself', 'Send packets', 'Deliver out of order', 'WAITING_ACK', 'COMMITTED', 'RECOVERED']) {
+      check(!text.includes(gone), `no "${gone}"`);
+    }
+    equal(consoleErrors.slice(errorsBefore).filter((m) => !/not wrapped in act/.test(m)), [], 'no React errors');
   } finally {
     await ui.unmount();
   }
 });
 
-await test('engine selection: VITE_ENGINE=backend renders ManualControls instead', async () => {
-  server = createFakeBackend();
-  server.addDialog('D1', 'T1', 'PROCESSING', [{ seq: 1, status: 'acked', attempts: 1 }]);
-  const App = await bundle(`export { default } from ${JSON.stringify(`${src}/App.jsx`)};`, { 'import.meta.env': JSON.stringify({ VITE_ENGINE: 'backend' }) });
-  const ui = await mountComponent(App, {});
+await test('TaskList + ActivityFeed render real backend shapes (populated)', async () => {
+  const hook = await loaded();
+  const Populated = await bundle(`
+    import TaskList from ${JSON.stringify(`${src}/components/TaskList.jsx`)};
+    import ActivityFeed from ${JSON.stringify(`${src}/components/ActivityFeed.jsx`)};
+    export default function Populated({ dialogs, logs }) {
+      return (<div><TaskList dialogs={dialogs} selectedId="" onSelect={() => {}} /><ActivityFeed logs={logs} onClear={() => {}} /></div>);
+    }`);
   try {
-    await waitFor(() => server.callsTo('GET', '/api/state').length > 0, 'backend polled');
-    const text = ui.container.textContent;
-    check(text.includes('Try it yourself — on the live backend'), 'ManualControls rendered');
-    check(!text.includes('Or try it yourself'), 'old sim controls hidden');
+    const dialogs = hook.read().dialogs.map((d) => (d.id === 'D2' ? { ...d, suppressed: 2 } : d));
+    const ui = await mountComponent(Populated, { dialogs, logs: hook.read().logs });
+    try {
+      const text = ui.container.textContent;
+      for (const d of dialogs) check(text.includes(d.id), `task ${d.id} listed`);
+      check(/\d+ of \d+ work items/.test(text), 'progress shown');
+      check(text.includes('2 duplicates blocked since server start'), 'per-task duplicate label is scoped to the server run');
+      check(text.includes('New task started'), 'feed narrated');
+      check(!/WAITING_ACK|COMMITTED|PROCESSING/.test(text.replace(/D\d/g, '')), 'no raw lifecycle names as labels');
+      const titles = [...ui.container.querySelectorAll('[title^="Packet "]')].map((e) => e.title);
+      check(titles.includes('Packet 2: sent, not processed yet') && titles.includes('Packet 1: processed'), `ledger strip ${titles.join(' | ')}`);
+    } finally {
+      await ui.unmount();
+    }
   } finally {
-    await ui.unmount();
+    await hook.unmount();
+  }
+});
+
+await test('reset: POST /api/reset {confirm}, local feed and tasks cleared, then re-read', async () => {
+  const hook = await loaded();
+  try {
+    server.on('POST /api/reset', (body) => {
+      server.epoch = 'ep-reset';
+      server.events = [];
+      server.lastId = 0;
+      server.dialogs.clear();
+      return { status: 200, json: { ok: true, body } };
+    });
+    await act(async () => { await hook.read().resetEngine(); });
+    equal(server.mutations().map((c) => [c.path, c.body]), [['/api/reset', { confirm: 'RESET' }]], 'one reset call');
+    await waitFor(() => hook.read().dialogs.length === 0 && hook.read().logs.length === 0, 'cleared');
+    equal(hook.read().metrics.totalDialogs, 0, 'metrics re-read');
+  } finally {
+    await hook.unmount();
   }
 });
 
