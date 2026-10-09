@@ -1,6 +1,6 @@
 # Nighthawks — PS-021 Project Context
 
-**Last Updated:** 2026-10-09 — Phases 0–8 complete (backend, HTTP API, dashboard driven by the API, simulation removed); next: Phase 9 (end-to-end tests)
+**Last Updated:** 2026-10-09 — Phases 0–9 complete (backend, HTTP API, dashboard driven by the API, browser E2E tests + docs/TEST_RESULTS.md); next: Phase 10 (demo)
 **Team:** Nighthawks
 **Project:** PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters
 **Category:** AIORI-3 / 6G & Future Networks
@@ -395,15 +395,15 @@ Contract: `docs/API_DESIGN.md` (its "Implementation status" section lists every 
 ✅ Phase 6c: Scenario module, E11/E12, five scenarios via HTTP, docs (commit 29e1197)
 ✅ Phase 7a: API client, polling engine hook, Vite proxy                (commit 2e84bfe)
 ✅ Phase 7b: Manual controls, error UX, honest wording, hook tests      (commit 918957d)
-✅ Phase 8: Frontend cleanup — simulation engine, WAITING_ACK, MCP/A2A
-            tags and simulation-only wording removed; one (backend) model
-⏸ Phase 9: End-to-end tests   ← NEXT
-⏸ Phase 10: Demo
+✅ Phase 8: Frontend cleanup — simulation removed, one backend model   (commit 8b4b1f7)
+✅ Phase 9: Browser E2E (e2e/, Playwright + local Edge, 16 tests) and
+            docs/TEST_RESULTS.md
+⏸ Phase 10: Demo   ← NEXT
 ⏸ Phase 11: Final deliverables (PDF per Proposed-structure-hackathon.pdf,
              repo hand-over to aiori-hackathon)
 ```
 
-Backend tests: 14 files, 265 passing. Frontend `npm test`: mappers, messages, backendEngine (2026-10-09).
+Backend tests: 14 files, 265 passing. Frontend `npm test`: mappers 33, messages 8, backendEngine 23. Browser E2E (`e2e/`, `npm run e2e`): 16 passing (2026-10-09). Results: `docs/TEST_RESULTS.md`.
 
 ---
 

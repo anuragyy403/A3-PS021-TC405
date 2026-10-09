@@ -5,11 +5,11 @@
 
 > A prototype that connects two mock agent adapters and shows how explicit dialog IDs, lifecycle states, request deduplication, and durable state let a task survive a disconnect or restart without losing its identity or repeating side effects that were already durably recorded.
 
-> **Status (Phase 8, 2026-10-09).**
+> **Status (Phase 9, 2026-10-09).**
 >
-> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md). The React dashboard in `Front/frontend/` reads everything from that API (the old in-browser simulation was removed in Phase 8).
+> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md). The React dashboard in `Front/frontend/` reads everything from that API (the old in-browser simulation was removed in Phase 8), and browser end-to-end tests (`e2e/`, Playwright + Edge) run the five scenarios and the manual flows through the real UI, Vite proxy, backend and SQLite file ([`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)).
 >
-> **Not yet implemented:** end-to-end browser tests; the scripted live demonstration; the final deliverables (PDF, repository hand-over).
+> **Not yet implemented:** the scripted live demonstration; the final deliverables (PDF, repository hand-over).
 >
 > Sections labelled **Requirement** come from the official Problem Statement. Sections marked **Pending** describe work that has not been done yet.
 
@@ -983,6 +983,15 @@ Backend (from `backend/`):
 
 Frontend (from `Front/frontend/`): `npm test` runs `tests/mappers.mjs` (mappers against captured backend responses), `tests/messages.mjs` (user-facing texts) and `tests/backendEngine.mjs` (the polling hook, manual controls and the whole App in jsdom against a scripted fake `fetch`). No backend is needed.
 
+| Level | Where | Command | Expected |
+|---|---|---|---|
+| Frontend unit | `Front/frontend/` | `npm test` | mappers 33, messages 8, backendEngine 23 checks pass |
+| Frontend build / lint | `Front/frontend/` | `npm run build`, `npm run lint` | build OK, 0 warnings |
+| Client smoke vs a running backend | `Front/frontend/` | `BACKEND_URL=http://localhost:3001 node tests/backend-smoke.mjs` | 6 smoke steps pass (also run inside the E2E suite) |
+| Browser end-to-end | `e2e/` | `npm install` once, then `npm run e2e` (or `npm run e2e:headed`) | 16 tests pass; ports 3101/5199 free afterwards |
+
+The E2E run starts its own backend (port 3101, fresh temp database file) and Vite (port 5199), uses the installed Microsoft Edge (no browser download), and cleans up after itself; see [`e2e/README.md`](e2e/README.md).
+
 ---
 
 ## 26. Demonstration Guide
@@ -1019,7 +1028,9 @@ Until then, the scenarios can be shown with `npx vitest run tests/scenarios.test
 
 ## 28. Results
 
-Run on **2026-10-08** with `npx vitest run` in `backend/` (Vitest 1.6.0, Node.js v24.14.1): **14 test files, 265 tests, all passed.**
+Full results for every test level (backend, API, frontend unit, client smoke, browser E2E), the scenario × level matrix and what each level does and does not prove: **[`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)** (2026-10-09).
+
+Run on **2026-10-09** with `npx vitest run` in `backend/` (Vitest 1.6.0, Node.js v24.14.1): **14 test files, 265 tests, all passed.** Browser E2E (`e2e/`, Playwright 1.63.0, Microsoft Edge 154): **16 tests, all passed, three consecutive runs.**
 
 | Scenario | Disconnect | Retry / restart | Correlation | Recovery | Deduplication | Result |
 |---|---|---|---|---|---|---|
@@ -1037,6 +1048,8 @@ Per-file counts: `scenarios` 8, `scenarioRunner` 13, `scenariosApi` 19, `api` 41
 - as manual call sequences using only the dialog, request, retry, complete and restart endpoints (`tests/scenariosApi.test.ts`).
 
 A run of the compiled server returned `passed` for all five, with Scenario 1 ending `INITIATED` + `COMMITTED`, Scenarios 2–3 `COMMITTED`, and Scenarios 4–5 `RECOVERED`.
+
+**Through the browser.** The E2E suite runs each scenario from its dashboard card and checks the result card, the task list and the backend's own records; it also drives the manual flows by clicking, and kills and restarts the backend OS process on the same SQLite file (tasks and states survive).
 
 **Interoperability.** The PS lists "Interoperability and recovery test results". Only **recovery** results are claimed here. Both adapters are written by the same team in the same codebase against one schema; **no interoperability between independently implemented adapters, and none with MCP or A2A, is claimed or tested.** What the mentor expects under "interoperability" should be clarified.
 
@@ -1131,7 +1144,8 @@ This prototype uses **two mock adapters** to study that problem in a controlled 
 - Durable state and deduplication — **done**
 - Five simulated disconnect/retry scenarios — **done (automated tests)**
 - HTTP API and dashboard connected to it — **done (Phases 5–8)**
-- End-to-end browser tests, scripted live demo — **pending (Phases 9–10)**
+- End-to-end browser tests — **done (Phase 9)**
+- Scripted live demo — **pending (Phase 10)**
 
 ### Future work (not implemented)
 

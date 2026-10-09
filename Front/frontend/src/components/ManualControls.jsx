@@ -217,7 +217,7 @@ export default function ManualControls({ actions, dialogs, selectedId, onSelect,
         </span>
       </div>
 
-      {hint ? <p className="text-[12px] text-amber-300/90">{hint}</p> : null}
+      {hint ? <p className="text-[12px] text-amber-300/90" data-testid="manual-hint">{hint}</p> : null}
 
       {result ? (
         <p
@@ -231,7 +231,7 @@ export default function ManualControls({ actions, dialogs, selectedId, onSelect,
       ) : null}
 
       {recovered ? (
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5 text-[12px] text-slate-300">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5 text-[12px] text-slate-300" data-testid="manual-recovered">
           <p className="overline mb-1.5">Reloaded after the last restart</p>
           {recovered.length === 0 ? (
             <p className="text-slate-500">No unfinished tasks had to be reloaded.</p>
