@@ -22,6 +22,15 @@ npm run e2e          # headless, ~1–2 min
 npm run e2e:headed   # same, with a visible Edge window
 ```
 
+Demo backup assets (not part of `npm run e2e`; same isolated ports 3101/5199):
+
+```bash
+npm run demo:record        # video of the talk track (steps 1–6, 8) → e2e/demo-output/*.webm (gitignored)
+npm run demo:screenshots   # PNGs → docs/assets/screenshots/ (committed) + the offline-fonts check
+```
+
+`demo:record` needs Playwright's ffmpeg once: `npx playwright install ffmpeg` (1.4 MB; no browser).
+
 Extra Playwright arguments pass through, e.g. `npm run e2e -- tests/manual.spec.js`
 or `npm run e2e -- -g "scenario 4"`. Set `E2E_TRACE=on` to keep a trace for every test
 (default: only for failures, in `test-results/artifacts/`).

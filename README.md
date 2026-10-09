@@ -5,11 +5,13 @@
 
 > A prototype that connects two mock agent adapters and shows how explicit dialog IDs, lifecycle states, request deduplication, and durable state let a task survive a disconnect or restart without losing its identity or repeating side effects that were already durably recorded.
 
-> **Status (Phase 9, 2026-10-09).**
+> **Status (Phase 10, 2026-10-09).**
 >
 > **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md). The React dashboard in `Front/frontend/` reads everything from that API (the old in-browser simulation was removed in Phase 8), and browser end-to-end tests (`e2e/`, Playwright + Edge) run the five scenarios and the manual flows through the real UI, Vite proxy, backend and SQLite file ([`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)).
 >
-> **Not yet implemented:** the scripted live demonstration; the final deliverables (PDF, repository hand-over).
+> **Demo:** a launcher (`node scripts/demo.mjs`), a live text trace (`node scripts/trace.mjs`), a dry-run-verified talk track ([`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)), one-page pseudocode ([`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md)), and reproducible backup assets (video, screenshots).
+>
+> **Not yet implemented:** the final deliverables (PDF, repository hand-over).
 >
 > Sections labelled **Requirement** come from the official Problem Statement. Sections marked **Pending** describe work that has not been done yet.
 
@@ -764,52 +766,32 @@ Retries reuse the same `dialog_id`, `task_id`, `seq` and payload. There is no ti
 
 ## 20. Pseudocode
 
-> Condensed from `AdapterA.ts` and `AdapterB.ts`.
+The full one-page version, with a source pointer for every block, is **[`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md)**. The core, from `AdapterA.ts` and `AdapterB.ts`:
 
 ```text
-# ---------- Adapter A ----------
-sendRequest(dialog_id, payload):
-    if dialog(dialog_id).state is terminal: throw DialogTerminalError
-    seq = send_log.max_seq(dialog_id) + 1
-    send_log.insert(dialog_id, seq, payload, PENDING, attempts = 1)   # persisted first
-    return deliver(dialog_id, task_id, seq, payload)
+sendRequest(dialog_id, payload):                 # Adapter A
+    seq = send_log.max_seq(dialog_id) + 1         # next seq from durable state
+    send_log.insert(seq, payload, PENDING)        # persisted before sending
+    deliver(dialog_id, task_id, seq, payload)     # ok/duplicate → ACKED
 
-retryRequest(dialog_id, seq):
-    row = send_log.get(dialog_id, seq) or throw NotFoundError
-    send_log.attempts += 1
-    return deliver(dialog_id, task_id, seq, row.payload)              # same payload
+retryRequest(dialog_id, seq):                     # same ids, same stored payload
+    deliver(dialog_id, task_id, seq, send_log.get(seq).payload)
 
-deliver(req):
-    try response = transport.send(req)
-    on MessageDroppedError:
-        if row is PENDING and row.attempts >= maxAttempts and dialog not terminal:
-            transition(dialog, FAILED)
-        rethrow
-    if response.status in (ok, duplicate): send_log.mark_acked(req.dialog_id, req.seq)
-    return response
-
-recover():                                         # after restart
-    for dialog in dialogs where state in (INITIATED, PROCESSING):
-        dialog.restored = true
-        report(nextSeq = send_log.max_seq + 1, pendingSeqs = send_log.pending)
-
-completeDialog(dialog_id):
-    if send_log.pending(dialog_id) is not empty: throw ConflictError
-    transition(dialog, RECOVERED if dialog.restored else COMMITTED)
-
-# ---------- Adapter B ----------
-handleRequest(req):
-    dialog = correlate(req.dialog_id, req.task_id)  # DIALOG_NOT_FOUND / TASK_MISMATCH
-    record = requests.get(req.dialog_id, req.seq)
-    if record exists: return duplicate(record.result)       # even if terminal
-    if dialog.state is terminal: return error(DIALOG_TERMINAL)
-    result = run_side_effect(req.payload)          # <-- crash window starts
-    requests.insert(req.dialog_id, req.seq, now, result)   # persisted; window ends
-    if dialog.state == INITIATED: transition(dialog, PROCESSING)
+handleRequest(req):                               # Adapter B, in this order
+    dialog = correlate(req.dialog_id, req.task_id)
+    if processed.has(req.dialog_id, req.seq): return duplicate(stored result)
+    if dialog is terminal: return error(DIALOG_TERMINAL)
+    result = run_side_effect(req.payload)         # <-- crash window opens
+    processed.insert(req.dialog_id, req.seq, result)   # persisted; window closes
+    if dialog.state == INITIATED: transition(PROCESSING)
     return ok(result)
+
+recover():                                        # every restart / server start
+    for each INITIATED/PROCESSING dialog: restored = true,
+        next_seq = send_log.max_seq + 1, pending_seqs = send_log.pending
 ```
 
-Known gap: the window between `run_side_effect` and `requests.insert`. See [Section 11](#11-request-deduplication).
+Known gap: the window between `run_side_effect` and `processed.insert`. See [Section 11](#11-request-deduplication).
 
 ---
 
@@ -953,7 +935,13 @@ curl -s -X POST localhost:3001/api/scenarios/4/run -H 'content-type: application
 
 The retry returns `"outcome":"duplicate"`; the scenario run returns its steps, checks and final states.
 
-Dashboard (start the backend first; Vite proxies `/api` and `/health` to `VITE_BACKEND_URL`, default `http://localhost:3001`):
+**Demo launcher (recommended for presenting).** One command starts the backend on `3001` with a fresh demo database (`.demo/demo.db`, gitignored) and the dashboard on `5173` with presenter pacing; Ctrl+C stops both. Options: `--keep-db`, `--pace <ms>`, `--backend-only`, `--frontend-only`. It refuses to start if a port is busy. A live text trace of the backend events: `node scripts/trace.mjs`. See [Section 26](#26-demonstration-guide).
+
+```bash
+node scripts/demo.mjs
+```
+
+Dashboard by hand (start the backend first; Vite proxies `/api` and `/health` to `VITE_BACKEND_URL`, default `http://localhost:3001`):
 
 ```bash
 cd Front/frontend
@@ -985,10 +973,11 @@ Frontend (from `Front/frontend/`): `npm test` runs `tests/mappers.mjs` (mappers 
 
 | Level | Where | Command | Expected |
 |---|---|---|---|
-| Frontend unit | `Front/frontend/` | `npm test` | mappers 33, messages 8, backendEngine 23 checks pass |
+| Frontend unit | `Front/frontend/` | `npm test` | mappers 33, messages 8, backendEngine 24 checks pass |
 | Frontend build / lint | `Front/frontend/` | `npm run build`, `npm run lint` | build OK, 0 warnings |
 | Client smoke vs a running backend | `Front/frontend/` | `BACKEND_URL=http://localhost:3001 node tests/backend-smoke.mjs` | 6 smoke steps pass (also run inside the E2E suite) |
 | Browser end-to-end | `e2e/` | `npm install` once, then `npm run e2e` (or `npm run e2e:headed`) | 16 tests pass; ports 3101/5199 free afterwards |
+| Trace formatter | repo root | `node scripts/trace.test.mjs` | 6 checks pass (every backend event type mapped) |
 
 The E2E run starts its own backend (port 3101, fresh temp database file) and Vite (port 5199), uses the installed Microsoft Edge (no browser download), and cleans up after itself; see [`e2e/README.md`](e2e/README.md).
 
@@ -996,33 +985,75 @@ The E2E run starts its own backend (port 3101, fresh temp database file) and Vit
 
 ## 26. Demonstration Guide
 
-> **Pending (Phase 10).** The dashboard is connected to the API; the scripted demo is still to be written. Outline only:
+The full 7–8 minute talk track, setup checklist, Q&A and fallback plan is **[`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)**. Short version:
 
-1. Start the backend; open the dashboard.
-2. Create a task/dialog; show `dialog_id`, `task_id`, `INITIATED`.
-3. Send a request; show `INITIATED → PROCESSING` and the side-effect count.
-4. Drop a response; retry; show `duplicate` with the count unchanged.
-5. Restart the process; show the same dialog reloaded and `recover()` output.
-6. Complete the task; show `RECOVERED`.
-7. Show the pseudocode ([Section 20](#20-pseudocode)) and the test results ([Section 28](#28-results)).
+1. `node scripts/demo.mjs` — backend on `3001` (fresh `.demo/demo.db`) + dashboard on `5173`, scenario pace 900 ms. For the optional real-process-kill step, start `--backend-only` and `--frontend-only` in two terminals instead.
+2. `node scripts/trace.mjs` in a terminal beside the browser — one readable line per backend event ([Section 27](#27-expected-demonstration-output)).
+3. In the dashboard: new task → send → lose the request → retry → lose the reply → retry (**duplicate blocked, work NOT repeated**) → Scenario 1 card (correlation) → lose a reply → **Restart Adapter A** (reloaded with the same ids, `next_seq` and the unanswered seq) → retry (duplicate) → send → complete (**RECOVERED**) → **Run all five** (5 of 5 passed).
+4. Close with the pseudocode ([`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md)), the test results ([`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)) and the limitations ([Section 33](#33-limitations)).
 
-Until then, the scenarios can be shown with `npx vitest run tests/scenarios.test.ts --reporter=verbose` or by calling `POST /api/scenarios/:id/run` ([Section 24](#24-running-the-prototype)).
+Backup assets: `cd e2e && npm run demo:record` (video of the talk track, `e2e/demo-output/`) and `npm run demo:screenshots` (`docs/assets/screenshots/`).
 
 ---
 
 ## 27. Expected Demonstration Output
 
-> **Pending (Phase 10).** The adapters do not print a trace like this; it illustrates what the demo should show. **This is not actual output.**
+**Real output**, captured with `node scripts/trace.mjs` (default: new events only) during the demo dry run on 2026-10-09: launcher started with `--backend-only` and `--frontend-only`, every action clicked in the dashboard as in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md). Shown: steps 1–4, 6 and the real process kill of step 7; the Scenario 1 and "Run all five" lines (scenario steps and `PASS · …` checks) are left out for length. Labels: `[A]` Adapter A, `[B]` Adapter B, `[net]` the transport, `[rt]` the runtime, `[trace]` the trace tool itself.
 
 ```text
-[A] startDialog task_id=T1 → dialog_id=D1 state=INITIATED
-[A] send D1 seq=1 (PENDING)
-[B] correlated D1/T1, (D1,1) new → side effect count=1, INITIATED → PROCESSING
---- simulated: response lost ---
-[A] retry D1 seq=1
-[B] (D1,1) already processed → duplicate, side effect NOT run (count=1)
-[A] completeDialog D1 → COMMITTED
+12:19:47.043 [A]    startDialog task_id=order-1001 → dialog_id=dlg-1791528587040-ygig9jy INITIATED
+12:20:41.415 [A]    send seq=1 → send log PENDING   (dlg-…ygig9jy)
+12:20:41.418 [B]    (dlg-…ygig9jy,1) new → processed (processed_count=1); INITIATED → PROCESSING
+12:20:41.418 [net]  reply for seq 1 delivered to A (status ok)   (dlg-…ygig9jy)
+12:20:41.420 [A]    seq 1 acknowledged → send log ACKED   (dlg-…ygig9jy)
+12:20:42.492 [A]    send seq=2 → send log PENDING   (dlg-…ygig9jy)
+12:20:42.493 [net]  request for seq 2 LOST — B never saw it   (dlg-…ygig9jy)
+12:20:43.566 [A]    retry seq=2 (attempt 2) — same dialog_id, task_id, seq and stored payload   (dlg-…ygig9jy)
+12:20:43.569 [B]    (dlg-…ygig9jy,2) new → processed (processed_count=2)
+12:20:43.569 [net]  reply for seq 2 delivered to A (status ok)   (dlg-…ygig9jy)
+12:20:43.571 [A]    seq 2 acknowledged → send log ACKED   (dlg-…ygig9jy)
+12:20:44.644 [A]    send seq=3 → send log PENDING   (dlg-…ygig9jy)
+12:20:44.646 [B]    (dlg-…ygig9jy,3) new → processed (processed_count=3)
+12:20:44.646 [net]  reply for seq 3 LOST — B already did the work (B status ok)   (dlg-…ygig9jy)
+12:20:45.702 [A]    retry seq=3 (attempt 2) — same dialog_id, task_id, seq and stored payload   (dlg-…ygig9jy)
+12:20:45.704 [B]    (dlg-…ygig9jy,3) already processed → DUPLICATE, work NOT repeated, stored answer returned
+12:20:45.704 [net]  reply for seq 3 delivered to A (status duplicate)   (dlg-…ygig9jy)
+12:20:45.706 [A]    seq 3 acknowledged → send log ACKED   (dlg-…ygig9jy)
+   … Scenario 1 (step 5) omitted …
+12:21:29.258 [A]    send seq=4 → send log PENDING   (dlg-…ygig9jy)
+12:21:29.259 [B]    (dlg-…ygig9jy,4) new → processed (processed_count=4)
+12:21:29.259 [net]  reply for seq 4 LOST — B already did the work (B status ok)   (dlg-…ygig9jy)
+12:21:30.319 [rt]   PROCESS RESTART (target A) — both adapters rebuilt from the SQLite file
+12:21:30.322 [A]    recovered dlg-1791528587040-ygig9jy task_id=order-1001 state=PROCESSING next_seq=5 pending=[4]
+12:21:30.322 [A]    recovered dlg-1791528654047-wj3gubg task_id=s1-rmv0lwkimcc3a-T1 state=INITIATED next_seq=1 pending=[]
+12:21:30.322 [rt]   restart complete — both adapters rebuilt from the SQLite file
+12:21:32.374 [A]    retry seq=4 (attempt 2) — same dialog_id, task_id, seq and stored payload   (dlg-…ygig9jy)
+12:21:32.376 [B]    (dlg-…ygig9jy,4) already processed → DUPLICATE, work NOT repeated, stored answer returned
+12:21:32.376 [net]  reply for seq 4 delivered to A (status duplicate)   (dlg-…ygig9jy)
+12:21:32.377 [A]    seq 4 acknowledged → send log ACKED   (dlg-…ygig9jy)
+12:21:33.470 [A]    send seq=5 → send log PENDING   (dlg-…ygig9jy)
+12:21:33.471 [B]    (dlg-…ygig9jy,5) new → processed (processed_count=5)
+12:21:33.471 [net]  reply for seq 5 delivered to A (status ok)   (dlg-…ygig9jy)
+12:21:33.472 [A]    seq 5 acknowledged → send log ACKED   (dlg-…ygig9jy)
+12:21:34.530 [A]    dlg-…ygig9jy PROCESSING → RECOVERED (completeDialog)
+12:21:43.809 [A]    startDialog task_id=order-1002 → dialog_id=dlg-1791528703807-sqv1jy8 INITIATED
+12:21:44.858 [A]    send seq=1 → send log PENDING   (dlg-…sqv1jy8)
+12:21:44.861 [B]    (dlg-…sqv1jy8,1) new → processed (processed_count=1); INITIATED → PROCESSING
+12:21:44.861 [net]  reply for seq 1 delivered to A (status ok)   (dlg-…sqv1jy8)
+12:21:44.863 [A]    seq 1 acknowledged → send log ACKED   (dlg-…sqv1jy8)
+12:21:50.932 [trace] backend unreachable at http://localhost:3001 (ECONNREFUSED) — retrying…
+12:22:04.071 [trace] backend reachable again at http://localhost:3001
+12:22:04.071 [trace] new event log (epoch ep-mv0ly2ec-3b8735): the backend was reset or is a new process — reading it from its start
+12:22:03.900 [A]    recovered dlg-1791528654047-wj3gubg task_id=s1-rmv0lwkimcc3a-T1 state=INITIATED next_seq=1 pending=[]
+12:22:03.901 [A]    recovered dlg-1791528703807-sqv1jy8 task_id=order-1002 state=PROCESSING next_seq=2 pending=[]
+12:22:14.869 [A]    send seq=2 → send log PENDING   (dlg-…sqv1jy8)
+12:22:14.874 [B]    (dlg-…sqv1jy8,2) new → processed (processed_count=2)
+12:22:14.874 [net]  reply for seq 2 delivered to A (status ok)   (dlg-…sqv1jy8)
+12:22:14.875 [A]    seq 2 acknowledged → send log ACKED   (dlg-…sqv1jy8)
+12:22:15.897 [A]    dlg-…sqv1jy8 PROCESSING → RECOVERED (completeDialog)
 ```
+
+Times are the backend's event times (local clock), except `[trace]` lines, which carry the time the trace printed them — that is why the two `recovered` lines after the real restart (written by the new process at boot) show an earlier time than the `[trace]` notice above them. The gap after 12:19:47 is the dry run pausing, not the system.
 
 ---
 
@@ -1145,7 +1176,7 @@ This prototype uses **two mock adapters** to study that problem in a controlled 
 - Five simulated disconnect/retry scenarios — **done (automated tests)**
 - HTTP API and dashboard connected to it — **done (Phases 5–8)**
 - End-to-end browser tests — **done (Phase 9)**
-- Scripted live demo — **pending (Phase 10)**
+- Scripted live demo — **done (Phase 10)**: launcher, trace, demo script, pseudocode, backup video/screenshots
 
 ### Future work (not implemented)
 

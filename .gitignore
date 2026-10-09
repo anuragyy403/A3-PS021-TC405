@@ -14,3 +14,6 @@ dist/
 
 # Local AI context (kept out of the repo going forward)
 KIRO_PROJECT_CONTEXT.md
+
+# Demo launcher database (scripts/demo.mjs)
+.demo/

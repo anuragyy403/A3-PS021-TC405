@@ -50,7 +50,7 @@ function setVisibility(value) {
 const React = (await import('react')).default;
 const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
-const { useBackendEngine, MANUAL_PAYLOAD } = await import('../src/api/useBackendEngine.js');
+const { useBackendEngine, MANUAL_PAYLOAD, DEFAULT_TIMING, parseStepDelay } = await import('../src/api/useBackendEngine.js');
 const { errorMessage } = await import('../src/api/messages.js');
 
 const h = React.createElement;
@@ -582,7 +582,7 @@ await test('unmount: all poll timers stopped; an in-flight poll does not resched
 // Components: ManualControls rules (D1/D2) and the whole App against the fake backend
 // ---------------------------------------------------------------------------
 
-async function bundle(source) {
+async function bundle(source, define = {}) {
   const { build } = await import('esbuild');
   const { mkdir, writeFile } = await import('node:fs/promises');
   const { pathToFileURL } = await import('node:url');
@@ -594,7 +594,7 @@ async function bundle(source) {
   await writeFile(entryFile, source, 'utf8');
   const out = await build({
     entryPoints: [entryFile], bundle: true, write: false, format: 'esm', platform: 'node', jsx: 'automatic',
-    loader: { '.js': 'jsx' }, external: ['react', 'react-dom', 'react-dom/client', 'lucide-react'], logLevel: 'silent',
+    loader: { '.js': 'jsx' }, external: ['react', 'react-dom', 'react-dom/client', 'lucide-react'], logLevel: 'silent', define,
   });
   await writeFile(outFile, out.outputFiles[0].text, 'utf8');
   return (await import(pathToFileURL(outFile).href)).default;
@@ -779,6 +779,19 @@ await test('reset: POST /api/reset {confirm}, local feed and tasks cleared, then
   } finally {
     await hook.unmount();
   }
+});
+
+await test('pacing: VITE_SCENARIO_STEP_DELAY_MS (0–1000) sets the scenario step delay, anything else → 400', async () => {
+  equal([parseStepDelay(undefined), parseStepDelay(''), parseStepDelay('900'), parseStepDelay(0), parseStepDelay('1000')], [400, 400, 900, 0, 1000], 'valid values');
+  equal([parseStepDelay('1001'), parseStepDelay('-1'), parseStepDelay('fast'), parseStepDelay('2.5'), parseStepDelay(null)], [400, 400, 400, 400, 400], 'invalid values fall back');
+  equal(DEFAULT_TIMING.scenarioStepDelayMs, 400, 'no Vite env (plain node) → 400');
+  const timingFor = async (env) => (await bundle(
+    `import { DEFAULT_TIMING } from ${JSON.stringify(`${src}/api/useBackendEngine.js`)}; export default DEFAULT_TIMING;`,
+    { 'import.meta.env': JSON.stringify(env) },
+  )).scenarioStepDelayMs;
+  equal(await timingFor({ VITE_SCENARIO_STEP_DELAY_MS: '900' }), 900, 'built with 900');
+  equal(await timingFor({ VITE_SCENARIO_STEP_DELAY_MS: '5000' }), 400, 'built with an out-of-range value');
+  equal(await timingFor({}), 400, 'built without the variable');
 });
 
 const { rm } = await import('node:fs/promises');

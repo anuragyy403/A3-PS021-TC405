@@ -33,13 +33,26 @@ import { dialogMessage, errorMessage, outcomeMessage, restartMessage } from './m
  * assertions / result), not an in-browser simulation.
  */
 
+export const DEFAULT_STEP_DELAY_MS = 400;
+
+/**
+ * Presenter pacing: VITE_SCENARIO_STEP_DELAY_MS (an integer 0–1000, the range the
+ * backend accepts for step_delay_ms).  Anything else falls back to 400.
+ */
+export function parseStepDelay(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return DEFAULT_STEP_DELAY_MS;
+  const ms = Number(value);
+  return Number.isInteger(ms) && ms >= 0 && ms <= 1000 ? ms : DEFAULT_STEP_DELAY_MS;
+}
+
 /** Default timings (ms).  Tests pass shorter ones via useBackendEngine({ timing }). */
 export const DEFAULT_TIMING = Object.freeze({
   eventsMs: 400,               // poll interval while visible
   hiddenMs: 1500,              // idle re-check interval while the tab is hidden (no requests)
   stateMaxAgeMs: 2000,         // refresh /api/state at least this often
   maxBackoffMs: 5000,          // cap for the retry delay while the backend is unreachable
-  scenarioStepDelayMs: 400,    // step_delay_ms sent with scenario runs
+  // step_delay_ms sent with scenario runs (import.meta.env is undefined outside Vite)
+  scenarioStepDelayMs: parseStepDelay(import.meta.env?.VITE_SCENARIO_STEP_DELAY_MS),
 });
 const PAGE_LIMIT = 500;
 const DETAIL_CONCURRENCY = 4;

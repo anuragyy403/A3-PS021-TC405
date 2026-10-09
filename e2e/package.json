@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "e2e": "node scripts/run-e2e.mjs",
-    "e2e:headed": "node scripts/run-e2e.mjs --headed"
+    "e2e:headed": "node scripts/run-e2e.mjs --headed",
+    "demo:record": "node demo/record.mjs",
+    "demo:screenshots": "node demo/screenshots.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"
