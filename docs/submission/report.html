@@ -1,0 +1,407 @@
+<!doctype html>
+<!--
+  Nighthawks PS-021 — submission report source.
+  Build: cd e2e && npm run report:pdf  →  docs/submission/Nighthawks-PS-021-Report.pdf
+
+  STRUCTURE IS PROVISIONAL: the organizers' "Proposed-structure-hackathon.pdf" was not
+  available in the repository when this report was produced (Phase 11). The sections
+  below follow a provisional order (title page, problem statement, objectives,
+  architecture, schema, lifecycle, scenarios, implementation, testing & results,
+  demo & pseudocode, limitations & non-claims, future work, team, references).
+  When the organizer PDF is available, re-order these sections to match it exactly.
+
+  Every statement and number comes from the code or from recorded runs
+  (docs/TEST_RESULTS.md). Nothing here is a claim beyond what was tested.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Nighthawks · PS-021 — Submission Report</title>
+<link rel="stylesheet" href="report.css" />
+</head>
+<body>
+
+<!-- ============================================================ title page -->
+<section class="cover">
+  <div>
+    <div class="kicker">AIORI-3 Hackathon · Category: 6G &amp; Future Networks · Team Nighthawks</div>
+    <h1>PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters</h1>
+    <div class="sub">Submission report — a complete, tested hackathon prototype</div>
+  </div>
+
+  <div class="note nonclaim">
+    <strong>Experimental prototype.</strong> Two mock agent adapters and an experimental dialog-state schema
+    (<code>v0.1-experimental</code>). It is <strong>not</strong> a production system, <strong>not</strong> an
+    implementation of a final IETF standard, <strong>not</strong> an MCP or A2A implementation (no MCP/A2A
+    interoperability is claimed), and does <strong>not</strong> provide exactly-once delivery: duplicate side
+    effects are prevented only once the original request has been durably recorded as processed.
+  </div>
+
+  <dl>
+    <dt>Team</dt><dd>Nighthawks — member names, roles and GitHub handles: see §13 (to be completed by the team)</dd>
+    <dt>Repository</dt><dd><code>github.com/anuragyy403/Nighthawks</code> (branch <code>phase-3a-recovery</code>)</dd>
+    <dt>Report date</dt><dd>2026-10-09</dd>
+    <dt>Stack</dt><dd>Node.js + TypeScript backend (Express, sql.js SQLite), React 18 dashboard, Playwright E2E</dd>
+    <dt>Report structure</dt><dd><strong>Provisional</strong> — the organizers' <em>Proposed-structure-hackathon.pdf</em> was not available
+      when this report was generated; sections will be re-ordered to that structure once it is provided.</dd>
+  </dl>
+
+  <div class="toc">
+    <strong>Contents</strong>
+    <ol>
+      <li>Problem statement</li><li>Objectives &amp; requirements</li><li>Architecture</li><li>Dialog-state schema</li>
+      <li>Lifecycle state machine</li><li>Disconnect / retry scenarios</li><li>Implementation</li>
+      <li>Testing &amp; results</li><li>Demonstration &amp; pseudocode</li><li>Limitations &amp; non-claims</li>
+      <li>Future work</li><li>Deliverables</li><li>Team</li><li>References</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ 1 -->
+<section class="chapter">
+<h2>1. Problem statement</h2>
+<p><strong>PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters.</strong> Build a prototype that
+correlates tasks across two mock agent adapters using dialog IDs, explicit lifecycle states, request deduplication, and
+durable recovery after a restart.</p>
+<p>AI agents increasingly hand tasks to one another across different frameworks, and each framework tracks "which
+conversation is this?" in its own way. When something goes wrong mid-task — a lost request, a lost reply, an agent
+restart — there is often no shared, explicit record of which task a message belongs to or whether it was already handled:</p>
+<ul>
+  <li>the sender does not know whether the receiver got the request;</li>
+  <li>a restarted agent that kept its dialog state only in memory has forgotten the task;</li>
+  <li>the natural reaction is to retry — and a retry of a request whose <em>reply</em> was lost repeats work that was
+      already done (sending a message twice, creating two records, charging twice).</li>
+</ul>
+<p>The prototype shows how explicit identifiers (<code>dialog_id</code>, <code>task_id</code>, <code>seq</code>),
+explicit lifecycle states, deduplication on <code>(dialog_id, seq)</code> and durable state in a SQLite file let a task
+survive a disconnect or a restart without losing its identity or repeating a side effect that was already recorded.</p>
+
+<h3>Three rules behind the design</h3>
+<ol>
+  <li><strong>Name everything explicitly.</strong> A dialog and a task get IDs; each logical request gets a sequence number.</li>
+  <li><strong>Write it down before relying on it.</strong> Every state change is persisted to the SQLite file immediately.</li>
+  <li><strong>Check before acting.</strong> Before doing any work, the receiver looks up whether this <code>(dialog_id, seq)</code> was already processed.</li>
+</ol>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="chapter">
+<h2>2. Objectives &amp; requirements</h2>
+<table>
+  <tr><th>#</th><th>PS-021 requirement</th><th>How it is met</th><th>Evidence</th></tr>
+  <tr><td>R1</td><td>Two mock agent adapters</td><td><code>AdapterA</code> (initiator) and <code>AdapterB</code> (receiver)</td><td><code>backend/src/adapters/</code>; <code>adapters.test.ts</code></td></tr>
+  <tr><td>R2</td><td>One defined dialog-state schema</td><td>Tables <code>dialogs</code>, <code>requests</code>, <code>outbound_requests</code> + message types</td><td><code>schema.sql</code>, <code>types/index.ts</code>, <code>docs/EXPERIMENTAL_SCHEMA.md</code></td></tr>
+  <tr><td>R3</td><td>Task identity preserved across restarts</td><td><code>dialog_id</code>/<code>task_id</code> in the file; <code>recover()</code>; <code>task_id</code> checked on every request</td><td>Scenarios 4 and 5; <code>recovery.test.ts</code>; E2E Dc and E</td></tr>
+  <tr><td>R4</td><td>Request deduplication</td><td>Primary key <code>(dialog_id, seq)</code> in <code>requests</code>; stored result returned on a repeat</td><td>Scenario 3; <code>adapters.test.ts</code>; E2E Da</td></tr>
+  <tr><td>R5</td><td>Five disconnect/retry scenarios</td><td>Scripted scenarios, runnable from tests, HTTP and the dashboard</td><td>§6, §8</td></tr>
+  <tr><td>R6</td><td>Explicit lifecycle states and valid transitions</td><td>5 states, transition table enforced by <code>DialogManager</code></td><td><code>DialogManager.test.ts</code>, <code>lifecycle.test.ts</code></td></tr>
+  <tr><td>R7</td><td>Mentor-pinned draft or clearly labelled experimental schema</td><td>Clearly labelled <code>v0.1-experimental</code>; no mentor draft pinned (pending mentor clarification)</td><td><code>docs/EXPERIMENTAL_SCHEMA.md</code></td></tr>
+  <tr><td>R8</td><td>No overclaiming (IETF, MCP/A2A, exactly-once)</td><td>Non-claims stated in the README, schema, dashboard footer and this report</td><td>§10</td></tr>
+</table>
+<p><strong>Expected outcomes</strong> (from the Problem Statement) and where they are delivered: two working mock adapters (§7),
+schema and state machine (§4, §5), durable state/recovery (§7, §8), deduplication (§7, §8), five scenarios (§6),
+recovery test results (§8 — interoperability between independently built adapters is <em>not</em> claimed, see §10),
+and a demonstration of task-identity preservation and duplicate-side-effect rejection (§9).</p>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="chapter">
+<h2>3. Architecture</h2>
+<p>Both mock adapters run as modules in <strong>one Node.js process</strong> and share <strong>one SQLite file</strong>
+(sql.js, written to disk after every mutation). The transport between them is an in-process function call with fault
+injection (drop the next request, or drop the next reply). An Express API exposes a <code>SimulationRuntime</code> that
+builds and drives both adapters; the React dashboard reads everything from that API and holds no experiment state of its own.</p>
+<figure>
+  <img src="../assets/diagrams/architecture.svg" alt="Architecture diagram" style="width: 100%" />
+  <figcaption>Figure 1 — Architecture. Every component name is verified against the source by <code>e2e/report/diagrams.mjs</code>.</figcaption>
+</figure>
+<table>
+  <tr><th>Component</th><th>Source</th><th>Responsibility</th></tr>
+  <tr><td>Adapter A</td><td><code>backend/src/adapters/AdapterA.ts</code></td><td>Creates dialogs, assigns <code>seq</code> from its durable send log, writes each request <code>PENDING</code> before sending, retries with the stored payload, <code>recover()</code>, completes or fails dialogs.</td></tr>
+  <tr><td>Adapter B</td><td><code>backend/src/adapters/AdapterB.ts</code></td><td><code>handleRequest</code>: correlate → dedup → terminal check → run the mock side effect → record → transition.</td></tr>
+  <tr><td>Transport</td><td><code>adapters/Transport.ts</code>, <code>runtime/ObservedTransport.ts</code></td><td>In-process delivery A → B with "drop next request / reply" fault injection; the observed variant emits activity events.</td></tr>
+  <tr><td>DialogManager</td><td><code>backend/src/services/DialogManager.ts</code></td><td>Correlation (<code>dialog_id</code> + <code>task_id</code>), lifecycle transitions, task identity.</td></tr>
+  <tr><td>Repositories</td><td><code>backend/src/repositories/</code></td><td><code>dialogs</code>, <code>requests</code> (B's processed records), <code>outbound_requests</code> (A's send log); each write calls <code>persistToDisk()</code>.</td></tr>
+  <tr><td>SimulationRuntime</td><td><code>backend/src/runtime/SimulationRuntime.ts</code></td><td>One lock, event log, scenario runner; "restart A/B" = close the database handle and rebuild everything from the file.</td></tr>
+  <tr><td>HTTP API</td><td><code>backend/src/app.ts</code>, <code>backend/src/http/</code></td><td>REST endpoints for dialogs, requests, retries, completion, restarts, scenarios, events, reset (see §7).</td></tr>
+  <tr><td>Dashboard</td><td><code>Front/frontend/</code></td><td>React 18 + Vite; polls the API (<code>useBackendEngine</code>); manual controls make exactly one API call per click.</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="chapter">
+<h2>4. Dialog-state schema (experimental, v0.1)</h2>
+<div class="note warn"><strong>Experimental dialog-state schema v0.1-experimental</strong> — inspired by emerging IETF agentproto
+discussions; NOT a standard; NOT MCP; NOT A2A. No mentor-selected draft has been pinned (pending mentor clarification).
+Full definition: <code>docs/EXPERIMENTAL_SCHEMA.md</code>. The code is the source of truth.</div>
+<h3>Identifiers</h3>
+<table>
+  <tr><th>Identifier</th><th>Meaning</th><th>Generated by</th><th>Kept on retry</th></tr>
+  <tr><td><code>dialog_id</code></td><td>One bounded A↔B exchange about one task; the correlation key</td><td>Adapter A: <code>dlg-&lt;Date.now()&gt;-&lt;7 random base-36 chars&gt;</code></td><td>Yes</td></tr>
+  <tr><td><code>task_id</code></td><td>The unit of work; must survive restarts</td><td>The caller of <code>startDialog(taskId)</code>; checked by Adapter B on every request</td><td>Yes</td></tr>
+  <tr><td><code>seq</code></td><td>One logical request within the dialog</td><td>Adapter A: <code>MAX(seq)</code> in its send log + 1</td><td>Yes</td></tr>
+</table>
+<h3>Durable records (one SQLite file)</h3>
+<table>
+  <tr><th>Table</th><th>Key</th><th>Columns</th><th>Role</th></tr>
+  <tr><td><code>dialogs</code></td><td><code>dialog_id</code></td><td><code>task_id</code>, <code>state</code> (5 states), <code>restored</code></td><td>Identity and lifecycle state</td></tr>
+  <tr><td><code>requests</code></td><td><code>(dialog_id, seq)</code></td><td><code>processed_at</code>, <code>result</code> (JSON)</td><td>Adapter B's processed records — the deduplication source of truth</td></tr>
+  <tr><td><code>outbound_requests</code></td><td><code>(dialog_id, seq)</code></td><td><code>payload</code>, <code>status</code> (<code>PENDING</code>/<code>ACKED</code>), <code>attempts</code></td><td>Adapter A's send log: replay payloads, next seq, unanswered seqs</td></tr>
+</table>
+<h3>Messages (in-process)</h3>
+<pre><code>Request  (A → B): { dialog_id, task_id, seq, payload }
+Response (B → A): { dialog_id, task_id, seq,
+                    status: "ok" | "duplicate" | "error",
+                    result,                 // duplicate → the STORED result
+                    error?, error_code? }   // DIALOG_NOT_FOUND | TASK_MISMATCH | DIALOG_TERMINAL | INTERNAL</code></pre>
+<h3>Rules</h3>
+<ul>
+  <li><strong>Correlation:</strong> a request belongs to the dialog named by <code>dialog_id</code>, and its <code>task_id</code> must equal the stored one (else <code>TASK_MISMATCH</code>).</li>
+  <li><strong>Deduplication:</strong> if <code>(dialog_id, seq)</code> exists in <code>requests</code>, the stored result is returned as <code>duplicate</code> and the side effect is not run — also for finished dialogs.</li>
+  <li><strong>Recovery:</strong> after a restart, every <code>INITIATED</code>/<code>PROCESSING</code> dialog is marked <code>restored</code>; its next seq is <code>MAX(seq)+1</code> and its unanswered seqs are the <code>PENDING</code> rows, both read from the file.</li>
+</ul>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="chapter">
+<h2>5. Lifecycle state machine</h2>
+<p>Exactly five states (<code>LIFECYCLE_STATES</code> in <code>backend/src/types/index.ts</code>), enforced by
+<code>DialogManager</code>; any other transition throws <code>InvalidTransitionError</code>. The diagram below is generated
+from — and checked against — the code's <code>VALID_TRANSITIONS</code> table.</p>
+<figure>
+  <img src="../assets/diagrams/lifecycle.svg" alt="Lifecycle state machine" style="width: 100%" />
+  <figcaption>Figure 2 — Lifecycle. Terminal: COMMITTED, RECOVERED, FAILED.</figcaption>
+</figure>
+<table>
+  <tr><th>From</th><th>To</th><th>Triggered by</th></tr>
+  <tr><td>—</td><td><code>INITIATED</code></td><td><code>AdapterA.startDialog(taskId)</code></td></tr>
+  <tr><td><code>INITIATED</code></td><td><code>PROCESSING</code></td><td>Adapter B, on the first new <code>(dialog_id, seq)</code></td></tr>
+  <tr><td><code>INITIATED</code> / <code>PROCESSING</code></td><td><code>FAILED</code></td><td>A request still <code>PENDING</code> after <code>maxAttempts</code> (default 5), or <code>failDialog(id, reason)</code></td></tr>
+  <tr><td><code>PROCESSING</code></td><td><code>COMMITTED</code></td><td><code>completeDialog</code>, dialog never restored, nothing <code>PENDING</code></td></tr>
+  <tr><td><code>PROCESSING</code></td><td><code>RECOVERED</code></td><td><code>completeDialog</code>, dialog restored after a restart, nothing <code>PENDING</code></td></tr>
+</table>
+<p>A finished dialog accepts no new work (<code>DIALOG_TERMINAL</code>); a retry of an already-processed seq is still answered
+with the stored result (idempotent replay).</p>
+</section>
+
+<!-- ============================================================ 6 -->
+<section class="chapter">
+<h2>6. Disconnect / retry scenarios</h2>
+<p>The five scenarios are backend scripts (<code>backend/src/scenarios/scenario1..5.ts</code>) using the real adapters,
+transport, DialogManager, repositories and a real SQLite file. Each is also an adapter-level test, a live-runtime test, an
+HTTP call sequence, a run endpoint (<code>POST /api/scenarios/:id/run</code>) and a dashboard card.</p>
+<table>
+  <tr><th>#</th><th>Scenario</th><th>What fails</th><th>Recovery action</th><th>Expected (and observed) result</th></tr>
+  <tr><td>1</td><td>Multiple Dialogs + Retry → Correct Correlation</td><td>D1/T1 and D2/T2 open; D2's seq 1 request is lost</td><td>Retry D2 / T2 / seq 1</td><td>Processed once, answered for D2; D1 untouched. D2 <code>COMMITTED</code>, D1 left <code>INITIATED</code> by design</td></tr>
+  <tr><td>2</td><td>Request Lost → Retry</td><td>seq 1 lost before B</td><td>Retry seq 1 (same ids)</td><td>Processed once (B never saw it). <code>COMMITTED</code></td></tr>
+  <tr><td>3</td><td>Response Lost → Duplicate Request</td><td>B processes seq 1, reply lost</td><td>Retry seq 1</td><td><code>duplicate</code>, stored result, work not repeated. <code>COMMITTED</code></td></tr>
+  <tr><td>4</td><td>Adapter B Restart → Durable State Recovery</td><td>B processes seq 1, reply lost, then restart</td><td>Rebuild from the file; <code>recover()</code> (next seq 2, pending [1]); retry seq 1</td><td><code>duplicate</code>; restarted process runs no side effect. <code>RECOVERED</code></td></tr>
+  <tr><td>5</td><td>Mid-Task Disconnect + Adapter A Restart → Resume</td><td>seq 1–2 ok; seq 3 processed, reply lost; restart</td><td><code>recover()</code> (next seq 4, pending [3]); retry 3 and 1; send seq 4</td><td>3 and 1 <code>duplicate</code>; seq 4 once; same <code>dialog_id</code>/<code>task_id</code>. <code>RECOVERED</code></td></tr>
+</table>
+<p>Scenario 5 also has a <em>request-lost</em> variant (seq 3 never reaches B; the retry is processed once). In every scenario the
+next seq comes from durable state; no test passes it in.</p>
+<figure>
+  <img src="../assets/diagrams/sequence.svg" alt="Sequence diagram" style="width: 92%" />
+  <figcaption>Figure 3 — Reply lost → restart → recover → retry recognised as duplicate → resume → RECOVERED (Scenario 5 shape).</figcaption>
+</figure>
+</section>
+
+<!-- ============================================================ 7 -->
+<section class="chapter">
+<h2>7. Implementation</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+  <tr><td>Backend</td><td>Node.js (v20+, verified on v24.14.1), TypeScript (strict), Express 4.19, zod 3.23</td><td>Validation of every request body; typed error mapping (<code>error_code</code>)</td></tr>
+  <tr><td>Storage</td><td>sql.js 1.12 (SQLite compiled to WebAssembly)</td><td>One file; the whole database is written to disk after every mutation</td></tr>
+  <tr><td>Dashboard</td><td>React 18.3, Vite 5.4, Tailwind 3</td><td>Polls <code>/api/events</code>, <code>/api/state</code>, ledgers; Vite proxies <code>/api</code> to the backend</td></tr>
+  <tr><td>Tests</td><td>Vitest 1.6 + supertest; plain-Node + jsdom; Playwright 1.63 with the installed Microsoft Edge</td><td>See §8</td></tr>
+</table>
+<h3>HTTP API (local, unauthenticated — demo only)</h3>
+<table>
+  <tr><th>Endpoint</th><th>Purpose</th></tr>
+  <tr><td><code>GET /health</code>, <code>GET /api/state</code></td><td>Health; snapshot of runtime, nodes, metrics and dialog summaries</td></tr>
+  <tr><td><code>GET /api/dialogs[/:id]</code>, <code>POST /api/dialogs</code></td><td>List / detail (processed records, send log, per-seq ledger); start a dialog for a <code>task_id</code></td></tr>
+  <tr><td><code>POST /api/dialogs/:id/requests</code></td><td>Send the next request; optional <code>fault: drop_request | drop_response</code></td></tr>
+  <tr><td><code>POST /api/dialogs/:id/requests/:seq/retry</code></td><td>Retry a logged seq with the stored payload (allowed on finished dialogs)</td></tr>
+  <tr><td><code>POST /api/dialogs/:id/complete</code>, <code>…/fail</code></td><td>Complete (409 <code>PENDING_REQUESTS</code> while a seq is unanswered) or abort</td></tr>
+  <tr><td><code>POST /api/adapters/A|B/restart</code></td><td>Rebuild everything from the SQLite file; returns the reloaded dialogs (<code>next_seq</code>, <code>pending_seqs</code>)</td></tr>
+  <tr><td><code>GET /api/scenarios</code>, <code>POST /api/scenarios/:id/run</code></td><td>The five scenarios: list with last result, run with steps and checks</td></tr>
+  <tr><td><code>GET /api/events?since=</code>, <code>POST /api/reset</code></td><td>Activity event log (cursor polling); demo-only reset</td></tr>
+</table>
+<h3>Restart semantics</h3>
+<p>Both adapters share one database handle, so "Restart Adapter A" and "Restart Adapter B" do the same thing: close the
+handle, discard every in-memory object, reopen the SQLite file, rebuild both adapters and run <code>recover()</code>. A real
+operating-system process restart (kill the server, start it on the same file) runs the same <code>recover()</code> at boot — the
+browser E2E suite tests that too.</p>
+<h3>Repository</h3>
+<pre><code>backend/        Express API, adapters, runtime, scenarios, SQLite (sql.js); 14 Vitest files
+Front/frontend/ React dashboard (Vite, Tailwind); plain-Node unit tests
+e2e/            Playwright suite (Edge), demo recorder, report/deck/diagram builders
+scripts/        demo launcher (demo.mjs), live trace (trace.mjs), trace tests
+docs/           schema, API design, pseudocode, test results, demo script, submission</code></pre>
+</section>
+
+<!-- ============================================================ 8 -->
+<section class="chapter">
+<h2>8. Testing &amp; results</h2>
+<p>All numbers are from runs executed on 2026-10-09 (Windows 11, Node.js v24.14.1, Microsoft Edge 154); details in
+<code>docs/TEST_RESULTS.md</code>.</p>
+<table>
+  <tr><th>Level</th><th>What runs</th><th>Count</th><th>Result</th></tr>
+  <tr><td>Backend unit + integration (Vitest)</td><td>adapters, DialogManager, storage, lifecycle, recovery, transport, events, runtime, the five scenarios</td><td>14 files, 265 tests</td><td class="ok">265 passed</td></tr>
+  <tr><td>— of which HTTP API (supertest)</td><td>every endpoint, validation, error mapping, scenario runs, HTTP scenario sequences</td><td>62 tests</td><td class="ok">62 passed</td></tr>
+  <tr><td>Frontend unit (plain Node + jsdom)</td><td>mappers vs captured backend responses, user texts, polling hook, manual controls, whole App vs a scripted fake <code>fetch</code></td><td>65 checks</td><td class="ok">65 passed</td></tr>
+  <tr><td>Trace formatter</td><td>every backend event type mapped; real captured events</td><td>6 checks</td><td class="ok">6 passed</td></tr>
+  <tr><td>Client smoke (real backend)</td><td>dashboard API client against a running backend</td><td>6 steps</td><td class="ok">6 passed</td></tr>
+  <tr><td>Browser E2E (Playwright + Edge)</td><td>real browser → Vite → backend process → SQLite file; five scenarios, manual flows, real process kill/restart, reset</td><td>16 tests</td><td class="ok">16 passed — 3 consecutive runs (Phase 9) and the final run (Phase 11)</td></tr>
+</table>
+
+<h3>Scenario × level matrix</h3>
+<table>
+  <tr><th>Scenario</th><th>Adapter level</th><th>Live runtime</th><th>HTTP call sequence</th><th>Run endpoint</th><th>Browser E2E</th></tr>
+  <tr><td>1 Multiple Dialogs + Retry</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td></tr>
+  <tr><td>2 Request Lost → Retry</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td><td>✔ (+ manual flow)</td></tr>
+  <tr><td>3 Response Lost → Duplicate</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td><td>✔ (+ manual flow)</td></tr>
+  <tr><td>4 Adapter B Restart → Recovery</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td><td>✔ (+ real process restart)</td></tr>
+  <tr><td>5 Mid-Task Disconnect + Restart → Resume</td><td>✔ (both variants)</td><td>✔ (both)</td><td>✔ (both)</td><td>✔ (both)</td><td>✔ (default variant)</td></tr>
+</table>
+
+<h3>Do the tests catch real breakage? (mutation check)</h3>
+<table>
+  <tr><th>Fault injected temporarily</th><th>Browser E2E result</th></tr>
+  <tr><td>Duplicate result line reworded (frontend)</td><td>3 of 16 tests failed</td></tr>
+  <tr><td>Deduplication check disabled in <code>AdapterB.handleRequest</code> (backend)</td><td>10 of 16 tests failed</td></tr>
+  <tr><td>No reconnect after a network failure (frontend hook)</td><td>1 of 16 tests failed (the real process-restart test)</td></tr>
+</table>
+<p>Every file was restored byte-identical afterwards. One finding: with the dedup check disabled, the backend's
+insert-conflict fallback still answered <code>duplicate</code> — only the in-memory <code>side_effects_since_boot</code>
+counter showed the work had run twice, so the E2E tests assert that counter.</p>
+
+<h3>What the results prove — and what they do not</h3>
+<ul>
+  <li><strong>Proven:</strong> correlation by <code>(dialog_id, task_id)</code>, deduplication on <code>(dialog_id, seq)</code> once the record is durable, recovery of identity and next seq from the file after an in-process rebuild and after a real OS-process restart, the five scenarios at every level, and the dashboard showing all of it.</li>
+  <li><strong>Not proven / not claimed:</strong> a crash <em>between</em> doing the work and recording it (the crash window, §10); crash during a file write; concurrency or load; other browsers; <strong>interoperability between independently implemented adapters</strong> — both adapters are ours, in one codebase, against one schema. "Recovery test results" are recorded; what the mentors expect under "interoperability" is pending clarification.</li>
+</ul>
+</section>
+
+<!-- ============================================================ 9 -->
+<section class="chapter">
+<h2>9. Demonstration &amp; pseudocode</h2>
+<p>The live demo (7–8 minutes, <code>docs/DEMO_SCRIPT.md</code>) starts with <code>node scripts/demo.mjs</code> (backend on a
+fresh demo database + dashboard) and a live text trace (<code>node scripts/trace.mjs</code>). Talk track: start a task → normal
+request → request lost → retry → reply lost → retry recognised as duplicate → Scenario 1 (correlation) → reply lost →
+Restart Adapter A → reloaded with the same ids, next seq and the unanswered seq → retry (duplicate) → continue → RECOVERED
+→ optional real process kill → "Run all five". A backup video and the screenshots below are generated reproducibly.</p>
+<div class="shots">
+  <figure><img src="../assets/screenshots/03-duplicate-blocked.png" alt="Duplicate blocked" /><figcaption>Reply lost, then the retry: "duplicate blocked · work NOT repeated · stored answer returned".</figcaption></figure>
+  <figure><img src="../assets/screenshots/04-recovered-row.png" alt="Recovered row after restart" /><figcaption>After "Restart Adapter A": same dialog_id / task_id, next_seq 5, seq 4 still unanswered.</figcaption></figure>
+  <figure><img src="../assets/screenshots/05-recovered-task.png" alt="Recovered task" /><figcaption>The task finishes RECOVERED — "5 work items, none repeated".</figcaption></figure>
+  <figure><img src="../assets/screenshots/06-five-of-five.png" alt="Five of five passed" /><figcaption>All five scenarios run from the dashboard: "5 of 5 passed".</figcaption></figure>
+</div>
+
+<h3>Pseudocode (from the real code paths — full version: <code>docs/PSEUDOCODE.md</code>)</h3>
+<pre><code>sendRequest(dialog_id, payload):                       # AdapterA.ts
+    if dialog is terminal: throw DIALOG_TERMINAL
+    seq = send_log.max_seq(dialog_id) + 1               # next seq from durable state
+    send_log.insert(seq, payload, PENDING)              # persisted BEFORE sending
+    deliver(dialog_id, task_id, seq, payload)           # ok / duplicate → ACKED
+
+retryRequest(dialog_id, seq):                           # same ids, same stored payload
+    deliver(dialog_id, task_id, seq, send_log.get(seq).payload)
+
+handleRequest(req):                                     # AdapterB.ts — order matters
+    dialog = correlate(req.dialog_id, req.task_id)      # DIALOG_NOT_FOUND / TASK_MISMATCH
+    if processed.has(req.dialog_id, req.seq):
+        return duplicate(stored result)                 # work NOT re-run
+    if dialog is terminal: return error(DIALOG_TERMINAL)
+    result = run_side_effect(req.payload)               # ── crash window opens
+    processed.insert(req.dialog_id, req.seq, result)    # persisted ── crash window closes
+    if dialog.state == INITIATED: transition(PROCESSING)
+    return ok(result)
+
+restart(A or B):                                        # SimulationRuntime.doRestart
+    close the handle; rebuild both adapters from the SQLite file; recover()
+
+recover():                                              # AdapterA.ts — also at server start
+    for each INITIATED / PROCESSING dialog:
+        restored = true
+        next_seq = send_log.max_seq + 1 ; pending_seqs = send_log.pending
+
+completeDialog(dialog_id):
+    if any seq PENDING: throw PENDING_REQUESTS
+    transition(RECOVERED if restored else COMMITTED)</code></pre>
+</section>
+
+<!-- ============================================================ 10 -->
+<section class="chapter">
+<h2>10. Limitations &amp; non-claims</h2>
+<div class="note nonclaim">
+  <ul style="margin: 0">
+    <li>This is <strong>not exactly-once delivery</strong>. A repeat of a request that was recorded as processed is never executed again; that is all.</li>
+    <li><strong>Not an IETF standard implementation.</strong> The schema is experimental and only inspired by the IETF agentproto discussions.</li>
+    <li><strong>Not MCP, not A2A</strong>, and no interoperability with them is claimed or tested.</li>
+    <li><strong>No interoperability between independently implemented adapters</strong> is claimed (pending mentor clarification of what is expected).</li>
+  </ul>
+</div>
+<table>
+  <tr><th>Limitation</th><th>Consequence</th></tr>
+  <tr><td>Crash window: Adapter B runs the side effect <em>before</em> persisting its processed record</td><td>A crash between the two means a retry runs the work again</td></tr>
+  <tr><td>Single process, one shared SQLite file</td><td>"Restart A" and "Restart B" are the same full rebuild; no independent adapter failure</td></tr>
+  <tr><td>Non-atomic persistence (the file is rewritten in place)</td><td>A crash during the write could corrupt the database (not tested)</td></tr>
+  <tr><td>In-process transport with two faults (drop request / drop reply)</td><td>No real network, timeouts, reordering or concurrent delivery</td></tr>
+  <tr><td>In-memory counters and event log</td><td><code>side_effects_since_boot</code> resets on every restart; duplicate counts and the event log are lost when the process exits</td></tr>
+  <tr><td>Fixed roles; one lock; local unauthenticated API</td><td>A always sends, B always receives; mutations are serialised (409 <code>RUNTIME_BUSY</code>); no security properties</td></tr>
+  <tr><td>Retry budget counts error replies too</td><td>A request can reach the 5-attempt limit with fewer dropped messages</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ 11 -->
+<section class="chapter">
+<h2>11. Future work</h2>
+<ul>
+  <li>Align the schema with a mentor-pinned or evolving IETF draft.</li>
+  <li>Close the crash window: intent records written before the side effect, or idempotent side effects.</li>
+  <li>Atomic file writes (write to a temporary file, then rename).</li>
+  <li>Separate processes and stores per adapter, a real network transport, and independently implemented adapters to test interoperability.</li>
+  <li>Concurrency handling for simultaneous duplicate requests; retention/cleanup of old records.</li>
+  <li>Authentication, authorization and signed requests.</li>
+</ul>
+
+<h2 style="margin-top: 18px">12. Deliverables</h2>
+<table>
+  <tr><th>Deliverable</th><th>Where</th></tr>
+  <tr><td>Working prototype (backend, API, dashboard)</td><td><code>backend/</code>, <code>Front/frontend/</code>; run with <code>node scripts/demo.mjs</code></td></tr>
+  <tr><td>Experimental dialog-state schema</td><td><code>docs/EXPERIMENTAL_SCHEMA.md</code></td></tr>
+  <tr><td>Pseudocode snippet for the demo</td><td><code>docs/PSEUDOCODE.md</code> (and §9)</td></tr>
+  <tr><td>Test results (all levels)</td><td><code>docs/TEST_RESULTS.md</code></td></tr>
+  <tr><td>Demo script, Q&amp;A, fallback plan</td><td><code>docs/DEMO_SCRIPT.md</code></td></tr>
+  <tr><td>This report and the slide deck (PDF)</td><td><code>docs/submission/</code></td></tr>
+  <tr><td>Demo video</td><td>Regenerated with <code>cd e2e &amp;&amp; npm run demo:record</code> (not committed)</td></tr>
+  <tr><td>Hand-over steps (private repo, collaborator, ownership transfer)</td><td><code>docs/submission/HANDOVER.md</code></td></tr>
+</table>
+</section>
+
+<!-- ============================================================ 13 -->
+<section class="chapter">
+<h2>13. Team</h2>
+<p><strong>Team Nighthawks</strong> — AIORI-3, Category 6G &amp; Future Networks.</p>
+<table>
+  <tr><th>Name</th><th>Role</th><th>GitHub</th></tr>
+  <tr><td>&lt;member 1&gt;</td><td>&lt;role&gt;</td><td>&lt;handle&gt;</td></tr>
+  <tr><td>&lt;member 2&gt;</td><td>&lt;role&gt;</td><td>&lt;handle&gt;</td></tr>
+  <tr><td>&lt;member 3&gt;</td><td>&lt;role&gt;</td><td>&lt;handle&gt;</td></tr>
+</table>
+<p class="note warn">Team member names, roles and handles have not been provided yet; they are to be completed by the team
+(README §40) before submission. Licence: to be decided by the team (README §41).</p>
+
+<h2 style="margin-top: 18px">14. References</h2>
+<ul>
+  <li>IETF Agent Communication Protocols (agentproto) working group — <code>https://datatracker.ietf.org/group/agentproto/about/</code> (referenced by PS-021; this project does not implement it).</li>
+  <li>PS-021 Problem Statement, AIORI-3 hackathon (organizer material), and <em>Proposed-structure-hackathon.pdf</em> (not available when this report was generated).</li>
+  <li>Project documents: <code>README.md</code>, <code>docs/EXPERIMENTAL_SCHEMA.md</code>, <code>docs/API_DESIGN.md</code>, <code>docs/PSEUDOCODE.md</code>, <code>docs/TEST_RESULTS.md</code>, <code>docs/DEMO_SCRIPT.md</code>.</li>
+  <li>Libraries used: Express, sql.js, zod, React, Vite, Tailwind CSS, Vitest, supertest, Playwright (versions in §7 and the package files).</li>
+</ul>
+</section>
+
+</body>
+</html>

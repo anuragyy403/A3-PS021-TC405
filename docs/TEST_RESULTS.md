@@ -5,7 +5,10 @@ schema, durable state in a SQLite file. Not a production system, not a final IET
 protocol, not an MCP/A2A implementation, not exactly-once delivery.
 
 Every number below comes from runs executed on **2026-10-09** on the machine described
-here. Nothing is estimated.
+here. Nothing is estimated. The **final full run** (Phase 11, after all documentation work,
+backend unchanged since Phase 8) reproduced every count below: backend 265/265 + type check,
+frontend 33 + 8 + 24 checks, trace formatter 6/6, browser E2E 16/16 in 73.8 s with ports
+3101/5199 free and no orphaned processes.
 
 ## 1. Environment
 
@@ -17,7 +20,7 @@ here. Nothing is estimated.
 | Backend test runner | Vitest 1.6.0, supertest 7.0.0; server run by tsx 4.15.6 |
 | Frontend | React 18.3.1, Vite 5.4.21; unit tests: plain Node + jsdom 30.1.1 + esbuild 0.21.5 |
 | E2E | @playwright/test 1.63.0 |
-| Code under test | branch `phase-3a-recovery`, Phase 8 commit `8b4b1f7` + Phase 9 working tree (E2E package, two `data-testid` attributes; backend unchanged) |
+| Code under test | branch `phase-3a-recovery`: Phase 9 runs on `8b4b1f7` + the E2E working tree; final run on Phase 10 commit `0c0b5d9` + the Phase 11 documentation (no code changes; `git diff 0c0b5d9 -- backend` empty) |
 
 ## 2. Commands
 
@@ -25,6 +28,9 @@ here. Nothing is estimated.
 cd backend        && npm test && npm run typecheck
 cd Front/frontend && npm test && npm run build && npm run lint
 cd e2e            && npm run e2e          # also runs Front/frontend/tests/backend-smoke.mjs against its backend
+node scripts/trace.test.mjs               # trace formatter (repo root)
+node scripts/check-links.mjs              # relative links + anchors in README.md and docs/
+cd e2e            && npm run report:pdf   # diagrams (verified against the code) + report/deck PDFs
 ```
 
 ## 3. Results per level
@@ -41,8 +47,8 @@ cd e2e            && npm run e2e          # also runs Front/frontend/tests/backe
 | Browser E2E | `e2e/tests/*.spec.js` (Playwright, Edge headless) | real browser → Vite (:5199) → backend process (:3101) → temp SQLite file | **16 tests** | **16 passed in each of 3 consecutive runs** |
 
 E2E run durations (wrapper `npm run e2e`, wall clock including server start/stop):
-**70.8 s, 70.9 s, 71.8 s** — 16/16 passed each time, ports 3101/5199 free afterwards,
-no orphaned processes.
+**70.8 s, 70.9 s, 71.8 s** (Phase 9, three consecutive runs) and **73.8 s** (final run, Phase 11) —
+16/16 passed each time, ports 3101/5199 free afterwards, no orphaned processes.
 
 Backend per file: `api` 41, `DialogManager` 38, `lifecycle` 30, `adapters` 29,
 `runtime` 26, `scenariosApi` 19, `recovery` 18, `storage` 17, `scenarioRunner` 13,

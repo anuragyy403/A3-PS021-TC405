@@ -31,6 +31,13 @@ npm run demo:screenshots   # PNGs → docs/assets/screenshots/ (committed) + the
 
 `demo:record` needs Playwright's ffmpeg once: `npx playwright install ffmpeg` (1.4 MB; no browser).
 
+Submission documents (offline; every request during the build must be local):
+
+```bash
+npm run report:diagrams    # docs/assets/diagrams/*.svg — verified against backend/src first
+npm run report:pdf         # diagrams + docs/submission/Nighthawks-PS-021-Report.pdf and -Deck.pdf
+```
+
 Extra Playwright arguments pass through, e.g. `npm run e2e -- tests/manual.spec.js`
 or `npm run e2e -- -g "scenario 4"`. Set `E2E_TRACE=on` to keep a trace for every test
 (default: only for failures, in `test-results/artifacts/`).

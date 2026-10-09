@@ -1,0 +1,63 @@
+/* Print stylesheet for docs/submission/report.html (A4, system fonts only — no web fonts). */
+@page { size: A4; margin: 18mm 17mm 20mm 17mm; }
+
+:root {
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #cbd5e1;
+  --soft: #f1f5f9;
+  --accent: #1d4ed8;
+  --good: #15803d;
+  --bad: #be123c;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 10.5pt/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+code, pre, .mono { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; }
+code { font-size: 9.5pt; background: var(--soft); padding: 0 3px; border-radius: 3px; }
+pre {
+  font-size: 8.4pt; line-height: 1.38; background: #f8fafc; border: 1px solid var(--line);
+  border-radius: 6px; padding: 9px 11px; white-space: pre-wrap; break-inside: avoid;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+h1, h2, h3 { color: var(--ink); line-height: 1.2; break-after: avoid; }
+h2 { font-size: 17pt; margin: 0 0 10px; padding-bottom: 5px; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 12pt; margin: 16px 0 6px; }
+p { margin: 0 0 8px; }
+ul, ol { margin: 0 0 8px; padding-left: 20px; }
+li { margin: 2px 0; }
+
+section.chapter { break-before: page; }
+
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt; break-inside: auto; }
+th, td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: var(--soft); font-weight: 650; }
+tr { break-inside: avoid; }
+
+figure { margin: 8px 0 14px; text-align: center; break-inside: avoid; }
+figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+figcaption { font-size: 8.8pt; color: var(--muted); margin-top: 4px; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.shots figure { margin: 0; }
+
+.note { border-left: 4px solid var(--accent); background: #eff6ff; padding: 8px 11px; margin: 8px 0 12px; border-radius: 4px; font-size: 9.6pt; }
+.warn { border-left-color: #b45309; background: #fffbeb; }
+.nonclaim { border-left-color: var(--bad); background: #fff1f2; }
+.ok { color: var(--good); font-weight: 650; }
+
+/* title page */
+.cover { height: 250mm; display: flex; flex-direction: column; justify-content: space-between; }
+.cover .kicker { font-size: 10pt; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.cover h1 { font-size: 26pt; margin: 6mm 0 3mm; }
+.cover .sub { font-size: 14pt; color: #334155; }
+.cover dl { display: grid; grid-template-columns: 38mm 1fr; gap: 3px 10px; font-size: 10pt; margin: 0; }
+.cover dt { color: var(--muted); }
+.cover dd { margin: 0; }
+
+.toc ol { columns: 2; column-gap: 14mm; font-size: 10pt; }

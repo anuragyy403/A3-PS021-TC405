@@ -5,16 +5,27 @@
 
 > A prototype that connects two mock agent adapters and shows how explicit dialog IDs, lifecycle states, request deduplication, and durable state let a task survive a disconnect or restart without losing its identity or repeating side effects that were already durably recorded.
 
-> **Status (Phase 10, 2026-10-09).**
+> **Status: complete hackathon prototype (2026-10-09).** Backend (two mock adapters, experimental schema, durable recovery, deduplication, HTTP API), React dashboard, five scenarios tested at every level from adapter tests to a real browser, demo tooling, and the submission documents are all in this repository. The only open items are the team's own: member details and licence ([§40](#40-team), [§41](#41-license)), the mentors' answers on "interoperability" and schema pinning ([§28](#28-results)), and the GitHub hand-over steps ([`docs/submission/HANDOVER.md`](docs/submission/HANDOVER.md)).
 >
-> **Implemented:** the backend core in `backend/` — two mock adapters, an in-process transport with fault injection, the DialogManager lifecycle service, three SQLite tables via sql.js, deduplication on `(dialog_id, seq)`, Adapter A's durable send log and `recover()`, task completion and failure, and terminal-state protection — plus an HTTP API over it ([Section 19](#19-api--message-format), [`docs/API_DESIGN.md`](docs/API_DESIGN.md)) that can drive dialogs, inject faults, restart adapters, run the five scenarios and stream activity events. The full backend suite is 265 passing tests, and the five scenarios pass both as adapter-level tests and through HTTP ([Section 28](#28-results)). The experimental schema is in [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md). The React dashboard in `Front/frontend/` reads everything from that API (the old in-browser simulation was removed in Phase 8), and browser end-to-end tests (`e2e/`, Playwright + Edge) run the five scenarios and the manual flows through the real UI, Vite proxy, backend and SQLite file ([`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)).
->
-> **Demo:** a launcher (`node scripts/demo.mjs`), a live text trace (`node scripts/trace.mjs`), a dry-run-verified talk track ([`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)), one-page pseudocode ([`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md)), and reproducible backup assets (video, screenshots).
->
-> **Not yet implemented:** the final deliverables (PDF, repository hand-over).
->
-> Sections labelled **Requirement** come from the official Problem Statement. Sections marked **Pending** describe work that has not been done yet.
+> Sections labelled **Requirement** come from the official Problem Statement.
 
+## Deliverables
+
+| Deliverable | Where |
+|---|---|
+| Submission report (PDF, provisional structure — see the note in the report) | [`docs/submission/Nighthawks-PS-021-Report.pdf`](docs/submission/Nighthawks-PS-021-Report.pdf) · source [`report.html`](docs/submission/report.html) |
+| Presentation deck (PDF, 12 slides) | [`docs/submission/Nighthawks-PS-021-Deck.pdf`](docs/submission/Nighthawks-PS-021-Deck.pdf) · source [`deck.html`](docs/submission/deck.html) |
+| Experimental dialog-state schema (R2, R7) | [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md) |
+| Pseudocode snippet for the demo | [`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md) |
+| Test results (all levels, scenario matrix, mutation check) | [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) |
+| Demo script, Q&A, fallback plan | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) |
+| Diagrams (architecture, lifecycle, sequence — generated and verified against the code) | [`docs/assets/diagrams/`](docs/assets/diagrams/) |
+| Screenshots | [`docs/assets/screenshots/`](docs/assets/screenshots/) |
+| Demo video (not committed) | `cd e2e && npm run demo:record` → `e2e/demo-output/*.webm` |
+| API design | [`docs/API_DESIGN.md`](docs/API_DESIGN.md) |
+| Hand-over steps and submission checklist | [`docs/submission/HANDOVER.md`](docs/submission/HANDOVER.md) |
+
+Rebuild the PDFs and diagrams: `cd e2e && npm run report:pdf` (Playwright with the installed Microsoft Edge; offline).
 ---
 
 ## Table of Contents
@@ -297,7 +308,7 @@ The idea rests on three simple rules:
 
 ## 6. Architecture
 
-Both mock adapters run as modules in **one Node.js process** and share **one sql.js database handle over one SQLite file**. The transport is an in-process function call with fault injection.
+Both mock adapters run as modules in **one Node.js process** and share **one sql.js database handle over one SQLite file**. The transport is an in-process function call with fault injection. A rendered diagram that also shows the API, runtime and dashboard: [`docs/assets/diagrams/architecture.svg`](docs/assets/diagrams/architecture.svg).
 
 ```mermaid
 flowchart LR
@@ -408,7 +419,7 @@ Summary:
 
 ## 9. Lifecycle State Machine
 
-Five states, defined in `backend/src/types/index.ts` and enforced by `DialogManager`.
+Five states, defined in `backend/src/types/index.ts` and enforced by `DialogManager`. Rendered diagram (generated from and checked against that file): [`docs/assets/diagrams/lifecycle.svg`](docs/assets/diagrams/lifecycle.svg).
 
 ```mermaid
 stateDiagram-v2
@@ -817,7 +828,15 @@ Nighthawks/
 ├── README.md
 ├── KIRO_PROJECT_CONTEXT.md        # internal project-context notes
 ├── docs/
-│   └── EXPERIMENTAL_SCHEMA.md     # R7: experimental dialog-state schema v0.1
+│   ├── EXPERIMENTAL_SCHEMA.md     # R7: experimental dialog-state schema v0.1
+│   ├── API_DESIGN.md              # HTTP API design and mapping
+│   ├── PSEUDOCODE.md              # one-page pseudocode with source pointers
+│   ├── TEST_RESULTS.md            # results of every test level
+│   ├── DEMO_SCRIPT.md             # 7–8 minute talk track, Q&A, fallbacks
+│   ├── assets/
+│   │   ├── diagrams/              # architecture / lifecycle / sequence SVG (generated)
+│   │   └── screenshots/           # dashboard screenshots (generated)
+│   └── submission/                # report + deck (HTML source and PDF), HANDOVER.md
 ├── backend/
 │   ├── package.json
 │   ├── tsconfig.json
@@ -843,29 +862,22 @@ Nighthawks/
 │   │       ├── AdapterB.ts
 │   │       ├── Transport.ts
 │   │       └── types.ts           # AdapterRequest / AdapterResponse
-│   └── tests/
-│       ├── scenarios.test.ts      # the five scenarios (adapter level)
-│       ├── scenarioRunner.test.ts # the five scenarios on the live runtime
-│       ├── scenariosApi.test.ts   # E11/E12 + the five scenarios as HTTP calls
-│       ├── api.test.ts            # every other endpoint, error mapping
-│       ├── runtime.test.ts        # SimulationRuntime
-│       ├── lifecycle.test.ts      # completion, failure, terminal guards
-│       ├── recovery.test.ts       # send log + recover()
-│       ├── adapters.test.ts, DialogManager.test.ts, storage.test.ts
-│       ├── observedTransport.test.ts, eventlog.test.ts, queries.test.ts
-│       └── health.test.ts
-└── Front/
-    └── frontend/                  # React dashboard over the backend API
-        ├── src/
-        │   ├── App.jsx
-        │   ├── api/               # client, useBackendEngine, mappers, messages
-        │   ├── components/        # panels, ManualControls
-        │   └── lib/               # constants, narrate, format
-        └── tests/                 # mappers, messages, backendEngine (+ fixtures)
+│   └── tests/                     # 14 Vitest files (scenarios, API, runtime, lifecycle, recovery, …)
+├── Front/
+│   └── frontend/                  # React dashboard over the backend API
+│       ├── src/                   # App, api/ (client, polling hook, mappers), components/, lib/
+│       └── tests/                 # mappers, messages, backendEngine (+ fixtures)
+├── e2e/                           # Playwright (installed Edge): browser tests, demo video/screenshots,
+│   ├── tests/                     #   report/deck/diagram builders
+│   ├── demo/
+│   └── report/
+└── scripts/
+    ├── demo.mjs                   # demo launcher (backend + dashboard)
+    ├── trace.mjs                  # live readable trace of backend events
+    └── trace.test.mjs
 ```
 
-The organizers' *Proposed-structure-hackathon.pdf* layout has not yet been applied (Phase 11).
-
+The submission report follows a provisional section order until the organizers' *Proposed-structure-hackathon.pdf* is available.
 ---
 
 ## 23. Installation
@@ -1082,7 +1094,7 @@ A run of the compiled server returned `passed` for all five, with Scenario 1 end
 
 **Through the browser.** The E2E suite runs each scenario from its dashboard card and checks the result card, the task list and the backend's own records; it also drives the manual flows by clicking, and kills and restarts the backend OS process on the same SQLite file (tasks and states survive).
 
-**Interoperability.** The PS lists "Interoperability and recovery test results". Only **recovery** results are claimed here. Both adapters are written by the same team in the same codebase against one schema; **no interoperability between independently implemented adapters, and none with MCP or A2A, is claimed or tested.** What the mentor expects under "interoperability" should be clarified.
+**Interoperability.** The PS lists "Interoperability and recovery test results". Only **recovery** results are claimed here. Both adapters are written by the same team in the same codebase against one schema; **no interoperability between independently implemented adapters, and none with MCP or A2A, is claimed or tested.** What the mentor expects under "interoperability" should be clarified — **pending mentor clarification** (no answer recorded yet). Likewise, no mentor-selected IETF draft has been pinned, so the schema stays the clearly labelled experimental `v0.1-experimental` (R7).
 
 ---
 
@@ -1099,10 +1111,10 @@ A run of the compiled server returned `passed` for all five, with Scenario 1 end
 | R7: Mentor-selected pinned or clearly labelled experimental schema | Clearly labelled experimental schema `v0.1-experimental` (no mentor draft pinned) | `docs/EXPERIMENTAL_SCHEMA.md` |
 | R8: No overclaiming (IETF, MCP/A2A, exactly-once) | Non-claims in Sections 11, 28, 30, 31, 33 and the schema doc; dashboard footer states the non-claims; no MCP/A2A tags in the UI | This README; `docs/EXPERIMENTAL_SCHEMA.md` §9 |
 | HTTP API controlling the adapters (project goal for the demo) | `backend/src/http/`, `backend/src/runtime/` | `tests/api.test.ts`, `tests/scenariosApi.test.ts`, `docs/API_DESIGN.md` |
-| Demo: identity preservation and duplicate rejection | Shown by the scenario tests and the API today | Live demo pending (Phase 10) |
-| Deliverable: private repo, collaborator, ownership transfer, team-named repo | [Section 42](#42-hackathon-deliverables-checklist) | Pending (Phase 11) |
-| Deliverable: PDF per *Proposed-structure-hackathon.pdf* | [Section 42](#42-hackathon-deliverables-checklist) | Pending (Phase 11) |
-| Deliverable: demo with pseudocode snippet | [Section 20](#20-pseudocode), [Section 26](#26-demonstration-guide) | Pseudocode written; demo pending |
+| Demo: identity preservation and duplicate rejection | Dashboard manual flows and scenario cards; launcher and live trace | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (dry-run verified); browser E2E Da, Dc, E ([`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)) |
+| Deliverable: private repo, collaborator, ownership transfer, team-named repo | Team action in the GitHub UI | [`docs/submission/HANDOVER.md`](docs/submission/HANDOVER.md); repository named `Nighthawks` |
+| Deliverable: PDF per *Proposed-structure-hackathon.pdf* | [`docs/submission/Nighthawks-PS-021-Report.pdf`](docs/submission/Nighthawks-PS-021-Report.pdf) | Provisional section order (organizer template not available yet) |
+| Deliverable: demo with pseudocode snippet | [`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md), [Section 26](#26-demonstration-guide) | Pseudocode and demo ready; backup video via `npm run demo:record` |
 
 ---
 
@@ -1233,7 +1245,7 @@ The adapters do not log routine events (sends, duplicates, transitions). Those a
 | `ConflictError` from `completeDialog` | A request is still `PENDING` | Retry the seqs listed in the message |
 | `InvalidTransitionError` | e.g. completing an `INITIATED` dialog | [Section 9](#9-lifecycle-state-machine) |
 | State not recovered after restart | Different `DB_PATH` / working directory between runs | Path of the `.db` file |
-| `npm start` fails to find `schema.sql` | `npm run build` (tsc) does not copy `schema.sql` into `dist/` | Use `npm run dev` for now |
+| `npm start` fails (`dist/` missing) | The compiled server has not been built | Run `npm run build` first (its `postbuild` step copies `schema.sql` into `dist/`), or use `npm run dev` |
 | Tests fail on leftover files | Temp `.db` files in the OS temp directory | Tests create and delete their own files |
 
 ---
@@ -1272,6 +1284,11 @@ The adapters do not log routine events (sends, duplicates, transitions). Those a
 ### Project documents
 
 - [`docs/EXPERIMENTAL_SCHEMA.md`](docs/EXPERIMENTAL_SCHEMA.md) — experimental dialog-state schema v0.1
+- [`docs/API_DESIGN.md`](docs/API_DESIGN.md) — HTTP API design
+- [`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md) — one-page pseudocode
+- [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) — test results
+- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — demo script
+- [`docs/submission/`](docs/submission/) — report and deck (PDF), hand-over steps
 
 Any additional sources should be added below and clearly marked as non-official.
 
@@ -1287,30 +1304,32 @@ Any additional sources should be added below and clearly marked as non-official.
 | `<member 2>` | `<role>` | `<handle>` |
 | `<member 3>` | `<role>` | `<handle>` |
 
+> **Open (team):** member names, roles and GitHub handles have not been provided yet. Fill them in here and in §13 of [`docs/submission/report.html`](docs/submission/report.html), then rebuild the PDFs (`cd e2e && npm run report:pdf`).
+
 ---
 
 ## 41. License
 
-License: TBD
+No licence has been chosen yet — **open (team decision)**. Until one is added, the default applies (all rights reserved). If an open-source licence is chosen, add a `LICENSE` file and update this section.
 
 ---
 
 ## 42. Hackathon Deliverables Checklist
 
-From the PS-021 Problem Statement:
+From the PS-021 Problem Statement. Ticked only where it is done and verifiable in this repository; repository settings are the team's to confirm ([`docs/submission/HANDOVER.md`](docs/submission/HANDOVER.md)).
 
-- [ ] Private GitHub repository created *(a GitHub remote exists; visibility not verified here)*
-- [ ] `aiori-hackathon` (<https://github.com/aiori-hackathon>) added as collaborator
-- [ ] After acceptance, ownership transferred to the `aiori-hackathon` account by all teammates and the organizers' account
+- [ ] Private GitHub repository *(team: Settings → visibility; not verified from here)*
+- [ ] `aiori-hackathon` (<https://github.com/aiori-hackathon>) added as collaborator *(team)*
+- [ ] After acceptance, ownership transferred to the `aiori-hackathon` account by all teammates and the organizers' account *(team)*
 - [x] Repository named according to the team name (`Nighthawks`)
-- [ ] PDF uploaded to the repository following *Proposed-structure-hackathon.pdf*
-- [ ] Prototype demonstration with a pseudocode snippet prepared for the mentor *(pseudocode in [Section 20](#20-pseudocode); demo pending)*
+- [ ] PDF uploaded to the repository following *Proposed-structure-hackathon.pdf* *(PDF committed — [`docs/submission/Nighthawks-PS-021-Report.pdf`](docs/submission/Nighthawks-PS-021-Report.pdf) — with a provisional section order; tick once it follows the organizer template)*
+- [x] Prototype demonstration with a pseudocode snippet prepared for the mentor ([`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md), [`docs/PSEUDOCODE.md`](docs/PSEUDOCODE.md))
 - [x] Two working mock adapters
 - [x] Dialog-state schema and state machine
 - [x] Durable state/recovery mechanism
 - [x] Request deduplication mechanism
 - [x] Five disconnect/retry scenarios tested
-- [ ] Interoperability and recovery test results recorded *(recovery results in [Section 28](#28-results); interoperability not claimed)*
-- [ ] Demonstration of task identity preservation and duplicate-side-effect rejection
+- [ ] Interoperability and recovery test results recorded *(recovery results recorded in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md); interoperability between independently implemented adapters not claimed — pending mentor clarification)*
+- [x] Demonstration of task identity preservation and duplicate-side-effect rejection (dashboard flows, browser E2E, demo script)
 
 > Per the Problem Statement, all deliverables must be completed to receive the participation certificate.

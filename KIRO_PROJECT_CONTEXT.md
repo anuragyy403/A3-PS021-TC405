@@ -1,6 +1,6 @@
 # Nighthawks — PS-021 Project Context
 
-**Last Updated:** 2026-10-09 — Phases 0–10 complete (backend, HTTP API, dashboard, browser E2E + docs/TEST_RESULTS.md, demo launcher/trace/script/pseudocode/backup assets); next: Phase 11 (final deliverables)
+**Last Updated:** 2026-10-09 — Phases 0–11 complete: the prototype is complete (backend, HTTP API, dashboard, browser E2E, demo tooling) and the submission documents are in docs/submission/ (report + deck PDF, HANDOVER.md). Open items are the team's: member details, licence, mentor answers, GitHub hand-over.
 **Team:** Nighthawks
 **Project:** PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters
 **Category:** AIORI-3 / 6G & Future Networks
@@ -399,9 +399,10 @@ Contract: `docs/API_DESIGN.md` (its "Implementation status" section lists every 
 ✅ Phase 9: Browser E2E (e2e/, Playwright + local Edge, 16 tests) and
             docs/TEST_RESULTS.md                                   (commit e6a35bd)
 ✅ Phase 10: Demo — scripts/demo.mjs, scripts/trace.mjs, docs/DEMO_SCRIPT.md,
-            docs/PSEUDOCODE.md, e2e demo:record / demo:screenshots
-⏸ Phase 11: Final deliverables   ← NEXT
-            (PDF per Proposed-structure-hackathon.pdf, repo hand-over to aiori-hackathon)
+            docs/PSEUDOCODE.md, e2e demo:record / demo:screenshots      (commit 0c0b5d9)
+✅ Phase 11: Final deliverables — report + deck PDF (provisional structure; organizer
+            template not available), verified diagrams, README final pass,
+            docs/submission/HANDOVER.md. Merge to main / push: left to the team.
 ```
 
 Backend tests: 14 files, 265 passing. Frontend `npm test`: mappers 33, messages 8, backendEngine 23. Browser E2E (`e2e/`, `npm run e2e`): 16 passing (2026-10-09). Results: `docs/TEST_RESULTS.md`.

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="524" viewBox="0 0 1000 524" role="img" aria-label="Nighthawks lifecycle state machine">
+<title>Nighthawks lifecycle state machine</title>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+  <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#be123c"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g font-family="Segoe UI, Helvetica, Arial, sans-serif" fill="#0f172a">
+<text x="20" y="30" text-anchor="start" font-size="17" font-weight="700" fill="#0f172a">Lifecycle — exactly the five backend states (backend/src/types/index.ts)</text>
+<circle cx="34" cy="200" r="9" fill="#0f172a"/>
+<text x="22" y="176" text-anchor="start" font-size="11.5" font-weight="400" fill="#334155">startDialog</text>
+<line x1="43" y1="200" x2="85" y2="200" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="85" y="172" width="170" height="56" rx="28" fill="#f1f5f9" stroke="#475569" stroke-width="1.6"/>
+<text x="170" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#475569">INITIATED</text>
+<rect x="435" y="172" width="170" height="56" rx="28" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="520" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#1d4ed8">PROCESSING</text>
+<rect x="795" y="82" width="170" height="56" rx="28" fill="#dcfce7" stroke="#15803d" stroke-width="1.6"/>
+<text x="880" y="115" text-anchor="middle" font-size="15" font-weight="700" fill="#15803d">COMMITTED</text>
+<rect x="795" y="262" width="170" height="56" rx="28" fill="#cffafe" stroke="#0e7490" stroke-width="1.6"/>
+<text x="880" y="295" text-anchor="middle" font-size="15" font-weight="700" fill="#0e7490">RECOVERED</text>
+<rect x="435" y="392" width="170" height="56" rx="28" fill="#ffe4e6" stroke="#be123c" stroke-width="1.6"/>
+<text x="520" y="425" text-anchor="middle" font-size="15" font-weight="700" fill="#be123c">FAILED</text>
+<line x1="255" y1="200" x2="435" y2="200" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="345" y="190" text-anchor="middle" font-size="11.5" fill="#334155">B processes the first new seq</text>
+<line x1="200" y1="228" x2="440" y2="404" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="242" y="334" text-anchor="middle" font-size="11.5" fill="#334155">retry budget used up / failDialog</text>
+<line x1="605" y1="184" x2="795" y2="122" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="690" y="139" text-anchor="end" font-size="11.5" fill="#334155">completeDialog · restored = false</text>
+<line x1="605" y1="216" x2="795" y2="278" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="688" y="287" text-anchor="middle" font-size="11.5" fill="#334155">completeDialog · restored = true</text>
+<line x1="520" y1="228" x2="520" y2="392" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="528" y="358" text-anchor="start" font-size="11.5" fill="#334155">retry budget used up / failDialog</text>
+<text x="880" y="156" text-anchor="middle" font-size="11.5" font-weight="400" fill="#15803d" font-style="italic">terminal</text>
+<text x="880" y="336" text-anchor="middle" font-size="11.5" font-weight="400" fill="#0e7490" font-style="italic">terminal</text>
+<text x="520" y="466" text-anchor="middle" font-size="11.5" font-weight="400" fill="#be123c" font-style="italic">terminal</text>
+<text x="20" y="492" text-anchor="start" font-size="11.5" font-weight="400" fill="#475569">completeDialog needs every seq ACKED (otherwise 409 PENDING_REQUESTS); retry budget = maxAttempts (default 5).</text>
+<text x="20" y="510" text-anchor="start" font-size="11.5" font-weight="400" fill="#475569">Terminal states accept no new work; a retry of an already-processed seq still returns the stored answer.</text>
+</g>
+</svg>
