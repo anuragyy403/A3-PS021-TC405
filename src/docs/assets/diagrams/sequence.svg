@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="736" viewBox="0 0 1040 736" role="img" aria-label="Nighthawks sequence: reply lost, restart, recover, resume">
+<title>Nighthawks sequence: reply lost, restart, recover, resume</title>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+  <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#be123c"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g font-family="Segoe UI, Helvetica, Arial, sans-serif" fill="#0f172a">
+<text x="20" y="30" text-anchor="start" font-size="17" font-weight="700" fill="#0f172a">Reply lost → restart → recover → retry = duplicate → resume → RECOVERED</text>
+<rect x="60" y="50" width="160" height="40" rx="10" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="140" y="75" text-anchor="middle" font-size="14" font-weight="700" fill="#1d4ed8">Adapter A</text>
+<rect x="320" y="50" width="160" height="40" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
+<text x="400" y="75" text-anchor="middle" font-size="14" font-weight="700" fill="#b45309">Transport</text>
+<rect x="580" y="50" width="160" height="40" rx="10" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.6"/>
+<text x="660" y="75" text-anchor="middle" font-size="14" font-weight="700" fill="#6d28d9">Adapter B</text>
+<rect x="820" y="50" width="160" height="40" rx="10" fill="#cffafe" stroke="#0e7490" stroke-width="1.6"/>
+<text x="900" y="75" text-anchor="middle" font-size="14" font-weight="700" fill="#0e7490">SQLite file</text>
+<line x1="140" y1="90" x2="140" y2="716" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4"/>
+<line x1="400" y1="90" x2="400" y2="716" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4"/>
+<line x1="660" y1="90" x2="660" y2="716" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4"/>
+<line x1="900" y1="90" x2="900" y2="716" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4"/>
+<rect x="60" y="102" width="920" height="26" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="520" y="120" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0f172a">Scenario 5 shape · task T1, dialog D1 · seq 1 and 2 already processed and ACKED</text>
+<line x1="146" y1="158" x2="894" y2="158" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="520" y="151" text-anchor="middle" font-size="12" fill="#334155">send log (D1, seq 3) PENDING — written BEFORE sending</text>
+<line x1="146" y1="196" x2="394" y2="196" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="270" y="189" text-anchor="middle" font-size="12" fill="#334155">request (D1, T1, seq 3, payload)</text>
+<line x1="406" y1="234" x2="654" y2="234" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="530" y="227" text-anchor="middle" font-size="12" fill="#334155">deliver</text>
+<line x1="666" y1="272" x2="894" y2="272" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="780" y="265" text-anchor="middle" font-size="12" fill="#334155">correlate D1/T1 · (D1,3) not found → do the work → record (D1,3)</text>
+<line x1="654" y1="310" x2="406" y2="310" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="530" y="303" text-anchor="middle" font-size="12" fill="#334155">ok + result</text>
+<line x1="394" y1="348" x2="146" y2="348" stroke="#be123c" stroke-width="1.6" marker-end="url(#arrow-red)"/>
+<text x="270" y="341" text-anchor="middle" font-size="12" fill="#be123c">✕ REPLY LOST — work done, A does not know (seq 3 stays PENDING)</text>
+<rect x="60" y="364" width="920" height="26" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="520" y="382" text-anchor="middle" font-size="12.5" font-weight="600" fill="#b45309">Restart Adapter A → the whole process is rebuilt from the SQLite file (A and B share one store)</text>
+<line x1="146" y1="420" x2="894" y2="420" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="520" y="413" text-anchor="middle" font-size="12" fill="#334155">recover(): restored = true · next_seq 4 · pending [3]</text>
+<line x1="146" y1="458" x2="394" y2="458" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="270" y="451" text-anchor="middle" font-size="12" fill="#334155">retry (D1, T1, seq 3) — same ids, stored payload</text>
+<line x1="406" y1="496" x2="654" y2="496" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="530" y="489" text-anchor="middle" font-size="12" fill="#334155">deliver</text>
+<line x1="666" y1="534" x2="894" y2="534" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="780" y="527" text-anchor="middle" font-size="12" fill="#334155">(D1,3) found → work NOT repeated</text>
+<line x1="654" y1="572" x2="146" y2="572" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="400" y="565" text-anchor="middle" font-size="12" fill="#334155">DUPLICATE + stored result</text>
+<line x1="146" y1="610" x2="894" y2="610" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="520" y="603" text-anchor="middle" font-size="12" fill="#334155">(D1, seq 3) ACKED</text>
+<line x1="146" y1="648" x2="654" y2="648" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="400" y="641" text-anchor="middle" font-size="12" fill="#334155">send seq 4 (next_seq from durable state) → processed once → ok</text>
+<line x1="146" y1="686" x2="894" y2="686" stroke="#334155" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="520" y="679" text-anchor="middle" font-size="12" fill="#334155">completeDialog → RECOVERED (restored = true, nothing PENDING)</text>
+</g>
+</svg>

@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="640" viewBox="0 0 1040 640" role="img" aria-label="Nighthawks data flow diagram">
+<title>Nighthawks data flow diagram (DFD, level 1)</title>
+<defs>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+  <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#be123c"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g font-family="Segoe UI, Helvetica, Arial, sans-serif" fill="#0f172a">
+<text x="20" y="28" font-size="16" font-weight="700">Nighthawks PS-021 — data flow (level 1): who reads and writes which store</text>
+<text x="20" y="47" font-size="11.5" fill="#64748b">Rectangle = external entity · rounded box = process · open box = data store · red = message that the transport may drop</text>
+
+<!-- External entity -->
+<rect x="20" y="70" width="210" height="78" fill="#f8fafc" stroke="#0f172a" stroke-width="1.6"/>
+<text x="125" y="102" text-anchor="middle" font-size="14" font-weight="700">Operator</text>
+<text x="125" y="120" text-anchor="middle" font-size="11.5" fill="#334155">browser dashboard (React)</text>
+<text x="125" y="136" text-anchor="middle" font-size="11.5" fill="#334155">or curl / test scripts</text>
+
+<!-- P1 -->
+<rect x="360" y="66" width="300" height="88" rx="14" fill="#ede9fe" stroke="#6d28d9" stroke-width="1.6"/>
+<text x="510" y="94" text-anchor="middle" font-size="14" font-weight="700" fill="#6d28d9">1. HTTP API + SimulationRuntime</text>
+<text x="510" y="112" text-anchor="middle" font-size="11.5" fill="#334155">validate input · one mutation lock</text>
+<text x="510" y="128" text-anchor="middle" font-size="11.5" fill="#334155">build snapshots · restart = reopen the file</text>
+<text x="510" y="144" text-anchor="middle" font-size="11.5" fill="#334155">scenario runner</text>
+
+<!-- D4 -->
+<path d="M790,84 L1020,84 M790,84 L790,136 L1020,136" fill="none" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="790" y="84" width="34" height="52" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="807" y="115" text-anchor="middle" font-size="12" font-weight="700">D4</text>
+<text x="834" y="106" font-size="12.5" font-weight="700">Event log</text>
+<text x="834" y="123" font-size="11" fill="#334155">in memory, ring buffer (not durable)</text>
+
+<!-- P2 -->
+<rect x="20" y="250" width="250" height="100" rx="14" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="145" y="280" text-anchor="middle" font-size="14" font-weight="700" fill="#1d4ed8">2. Adapter A</text>
+<text x="145" y="298" text-anchor="middle" font-size="11.5" fill="#334155">startDialog · sendRequest</text>
+<text x="145" y="314" text-anchor="middle" font-size="11.5" fill="#334155">retryRequest · completeDialog</text>
+<text x="145" y="330" text-anchor="middle" font-size="11.5" fill="#334155">failDialog · recover</text>
+
+<!-- P3 -->
+<rect x="395" y="258" width="250" height="84" rx="14" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
+<text x="520" y="288" text-anchor="middle" font-size="14" font-weight="700" fill="#b45309">3. Transport (in-process)</text>
+<text x="520" y="306" text-anchor="middle" font-size="11.5" fill="#334155">ObservedTransport</text>
+<text x="520" y="322" text-anchor="middle" font-size="11.5" fill="#334155">fault: drop request / drop reply</text>
+
+<!-- P4 -->
+<rect x="770" y="250" width="250" height="100" rx="14" fill="#f3e8ff" stroke="#7e22ce" stroke-width="1.6"/>
+<text x="895" y="280" text-anchor="middle" font-size="14" font-weight="700" fill="#7e22ce">4. Adapter B</text>
+<text x="895" y="298" text-anchor="middle" font-size="11.5" fill="#334155">handleRequest:</text>
+<text x="895" y="314" text-anchor="middle" font-size="11.5" fill="#334155">correlate → dedup → terminal check</text>
+<text x="895" y="330" text-anchor="middle" font-size="11.5" fill="#334155">→ mock side effect → record</text>
+
+<!-- D2 -->
+<path d="M20,508 L280,508 M20,508 L20,566 L280,566" fill="none" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="20" y="508" width="34" height="58" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="37" y="542" text-anchor="middle" font-size="12" font-weight="700">D2</text>
+<text x="64" y="530" font-size="12.5" font-weight="700">outbound_requests</text>
+<text x="64" y="546" font-size="11" fill="#334155">A's send log: (dialog_id, seq),</text>
+<text x="64" y="560" font-size="11" fill="#334155">payload, PENDING | ACKED, attempts</text>
+
+<!-- D1 -->
+<path d="M390,508 L650,508 M390,508 L390,566 L650,566" fill="none" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="390" y="508" width="34" height="58" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="407" y="542" text-anchor="middle" font-size="12" font-weight="700">D1</text>
+<text x="434" y="530" font-size="12.5" font-weight="700">dialogs</text>
+<text x="434" y="546" font-size="11" fill="#334155">dialog_id, task_id,</text>
+<text x="434" y="560" font-size="11" fill="#334155">state (5 states), restored</text>
+
+<!-- D3 -->
+<path d="M760,508 L1020,508 M760,508 L760,566 L1020,566" fill="none" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="760" y="508" width="34" height="58" fill="#f1f5f9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="777" y="542" text-anchor="middle" font-size="12" font-weight="700">D3</text>
+<text x="804" y="530" font-size="12.5" font-weight="700">requests</text>
+<text x="804" y="546" font-size="11" fill="#334155">B's processed ledger: (dialog_id, seq),</text>
+<text x="804" y="560" font-size="11" fill="#334155">processed_at, stored result</text>
+<text x="390" y="590" font-size="11" fill="#64748b">D1, D2, D3 = one SQLite file, written to disk after every change (durable across restarts)</text>
+
+<!-- E1 <-> P1 -->
+<line x1="230" y1="92" x2="360" y2="92" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="295" y="85" text-anchor="middle" font-size="11" fill="#334155">commands</text>
+<line x1="360" y1="128" x2="230" y2="128" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="295" y="145" text-anchor="middle" font-size="11" fill="#334155">state + events (polled)</text>
+<text x="295" y="160" text-anchor="middle" font-size="10" fill="#64748b">/api/state · /api/events</text>
+
+<!-- P1 -> D4 -->
+<line x1="660" y1="110" x2="790" y2="110" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="725" y="102" text-anchor="middle" font-size="11" fill="#334155">append events</text>
+
+<!-- P1 -> P2 -->
+<line x1="400" y1="154" x2="200" y2="250" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="232" y="196" font-size="11" fill="#334155">start · send (+fault) · retry ·</text>
+<text x="232" y="210" font-size="11" fill="#334155">complete · abort · recover</text>
+
+<!-- P3 -> D4 (observed events) -->
+<line x1="600" y1="258" x2="820" y2="136" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="700" y="214" font-size="10.5" fill="#64748b">observed send / drop / B events</text>
+
+<!-- P2 <-> P3 <-> P4 -->
+<line x1="270" y1="283" x2="395" y2="283" stroke="#be123c" stroke-width="1.6" marker-end="url(#r)"/>
+<text x="332" y="276" text-anchor="middle" font-size="10.5" fill="#be123c">request</text>
+<line x1="395" y1="320" x2="270" y2="320" stroke="#be123c" stroke-width="1.6" marker-end="url(#r)"/>
+<text x="332" y="336" text-anchor="middle" font-size="10.5" fill="#be123c">response</text>
+<line x1="645" y1="283" x2="770" y2="283" stroke="#be123c" stroke-width="1.6" marker-end="url(#r)"/>
+<text x="707" y="276" text-anchor="middle" font-size="10.5" fill="#be123c">request</text>
+<line x1="770" y1="320" x2="645" y2="320" stroke="#be123c" stroke-width="1.6" marker-end="url(#r)"/>
+<text x="707" y="336" text-anchor="middle" font-size="10.5" fill="#be123c">response</text>
+<text x="520" y="368" text-anchor="middle" font-size="10.5" fill="#334155">{dialog_id, task_id, seq, payload} → ← {status ok | duplicate | error, result}</text>
+
+<!-- P2 <-> D2 -->
+<line x1="70" y1="350" x2="70" y2="508" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="78" y="405" font-size="10.5" fill="#334155">write PENDING</text>
+<text x="78" y="419" font-size="10.5" fill="#334155">before sending;</text>
+<text x="78" y="433" font-size="10.5" fill="#334155">ACKED; attempts</text>
+<line x1="200" y1="508" x2="200" y2="350" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="208" y="452" font-size="10.5" fill="#334155">max seq, pending,</text>
+<text x="208" y="466" font-size="10.5" fill="#334155">stored payload</text>
+
+<!-- P2 <-> D1 -->
+<line x1="270" y1="340" x2="440" y2="508" stroke="#334155" stroke-width="1.6" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="384" y="398" font-size="10.5" fill="#334155">create · read state ·</text>
+<text x="384" y="412" font-size="10.5" fill="#334155">→ COMMITTED / RECOVERED /</text>
+<text x="384" y="426" font-size="10.5" fill="#334155">FAILED · set restored</text>
+
+<!-- P4 <-> D1 -->
+<line x1="790" y1="350" x2="610" y2="508" stroke="#334155" stroke-width="1.6" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="470" y="452" font-size="10.5" fill="#334155">correlate (read) ·</text>
+<text x="470" y="466" font-size="10.5" fill="#334155">INITIATED → PROCESSING</text>
+
+<!-- P4 <-> D3 -->
+<line x1="850" y1="508" x2="850" y2="350" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="770" y="420" font-size="10.5" fill="#334155">dedup lookup</text>
+<text x="770" y="434" font-size="10.5" fill="#334155">(dialog_id, seq)</text>
+<line x1="960" y1="350" x2="960" y2="508" stroke="#334155" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="900" y="420" font-size="10.5" fill="#334155">insert processed</text>
+<text x="900" y="434" font-size="10.5" fill="#334155">record + result</text>
+
+<text x="20" y="620" font-size="10.5" fill="#64748b">Process 1 also reads D1–D3 to build /api/state and /api/dialogs/:id snapshots (not drawn). Rows in D1–D3 are written only by Adapter A or B (demo reset deletes the whole file).</text>
+</g>
+</svg>

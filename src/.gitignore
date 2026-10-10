@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local SQLite databases
+*.db
+*.db-journal
+
+# Logs / env
+*.log
+.env
+
+# Local AI context (kept out of the repo going forward)
+KIRO_PROJECT_CONTEXT.md
+
+# Demo launcher database (scripts/demo.mjs)
+.demo/

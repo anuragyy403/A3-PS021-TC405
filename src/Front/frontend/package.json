@@ -1,0 +1,29 @@
+{
+  "name": "nighthawks-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Nighthawks PS-021 (AIORI-3): experimental dashboard for the dialog correlation and recovery backend prototype. Reads everything from the backend API.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "oxlint src",
+    "test": "node tests/mappers.mjs && node tests/messages.mjs && node tests/backendEngine.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.383.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "esbuild": "^0.21.5",
+    "jsdom": "^30.1.1",
+    "oxlint": "^1.11.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1"
+  }
+}

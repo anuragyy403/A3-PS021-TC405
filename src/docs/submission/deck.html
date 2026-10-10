@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  Nighthawks PS-021 — presentation deck (16:9 HTML slides).
+  Build: cd e2e && npm run report:pdf  →  docs/submission/Nighthawks-PS-021-Deck.pdf
+  Follows docs/DEMO_SCRIPT.md. Every number comes from docs/TEST_RESULTS.md. System fonts only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Nighthawks · PS-021 — Deck</title>
+<style>
+  @page { size: 13.333in 7.5in; margin: 0; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #0f172a; }
+  .slide {
+    width: 13.333in; height: 7.5in; padding: 0.55in 0.7in 0.5in; position: relative; overflow: hidden;
+    break-after: page; background: #ffffff; display: flex; flex-direction: column;
+  }
+  .slide:last-child { break-after: auto; }
+  .slide.dark { background: #0b1220; color: #e2e8f0; }
+  h1 { font-size: 40pt; margin: 0 0 0.15in; line-height: 1.1; }
+  h2 { font-size: 27pt; margin: 0 0 0.22in; padding-bottom: 0.08in; border-bottom: 3px solid #1d4ed8; }
+  .dark h2 { border-bottom-color: #38bdf8; }
+  p, li { font-size: 16pt; line-height: 1.4; }
+  ul { margin: 0; padding-left: 0.3in; }
+  li { margin: 0.06in 0; }
+  code, pre { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; }
+  code { font-size: 0.9em; background: #eef2f7; padding: 0 4px; border-radius: 4px; }
+  .dark code { background: #1e293b; color: #e2e8f0; }
+  pre { font-size: 12.2pt; line-height: 1.36; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.16in 0.22in; margin: 0; white-space: pre; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; }
+  .num { position: absolute; right: 0.45in; bottom: 0.25in; font-size: 11pt; color: #64748b; }
+  .foot { position: absolute; left: 0.7in; bottom: 0.25in; font-size: 11pt; color: #64748b; }
+  .dark .num, .dark .foot { color: #94a3b8; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3in; flex: 1; min-height: 0; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.22in; }
+  .fill { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .fill img { max-width: 100%; max-height: 100%; }
+  .shot img { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; }
+  .shot p { font-size: 12pt; margin: 0.06in 0 0; color: #334155; }
+  .tag { display: inline-block; font-size: 12pt; padding: 3px 10px; border-radius: 999px; background: #e0f2fe; color: #0369a1; margin-right: 6px; }
+  .nonclaim { border-left: 6px solid #be123c; background: #fff1f2; padding: 0.14in 0.2in; border-radius: 8px; }
+  .big { font-size: 20pt; }
+  .ok { color: #15803d; font-weight: 700; }
+  .muted { color: #64748b; }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide dark" style="justify-content: center">
+  <p class="muted" style="letter-spacing: .14em; text-transform: uppercase; font-size: 13pt; margin: 0">AIORI-3 · 6G &amp; Future Networks · Team Nighthawks</p>
+  <h1 style="margin-top: 0.15in">PS-021: Experimental Dialog Correlation<br/>and Recovery Across Agent Adapters</h1>
+  <p class="big" style="color: #cbd5e1">Two mock agent adapters that keep task identity and never repeat recorded work —<br/>across lost requests, lost replies and restarts.</p>
+  <p style="font-size: 13pt; color: #94a3b8; margin-top: 0.35in">Experimental prototype · not exactly-once · not MCP/A2A · not an IETF standard</p>
+  <div class="num">1</div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <h2>The problem</h2>
+  <div class="grid2">
+    <div>
+      <ul>
+        <li>Agents hand tasks to each other across frameworks; each tracks "which conversation is this?" its own way.</li>
+        <li>Mid-task, a <strong>request</strong> or a <strong>reply</strong> gets lost, or an agent <strong>restarts</strong>.</li>
+        <li>The sender cannot tell whether the work was done — so it retries.</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><strong>Lost reply + retry</strong> → the work runs twice (two messages, two records, charged twice).</li>
+        <li><strong>Restart</strong> with state only in memory → the task is forgotten; a retry looks like new work.</li>
+        <li>PS-021 asks for: dialog IDs, explicit lifecycle states, request deduplication, durable recovery — tested on five disconnect/retry scenarios.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="num">2</div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <h2>Approach: name it, write it down, check before acting</h2>
+  <table>
+    <tr><th style="width: 18%">Identifier</th><th>Meaning</th><th style="width: 36%">Where it lives</th></tr>
+    <tr><td><code>dialog_id</code></td><td>One A↔B exchange about one task — the correlation key</td><td><code>dialogs</code> table (with <code>state</code>, <code>restored</code>)</td></tr>
+    <tr><td><code>task_id</code></td><td>The unit of work; B rejects a request whose task_id differs</td><td><code>dialogs</code> table</td></tr>
+    <tr><td><code>seq</code></td><td>One logical request; <code>(dialog_id, seq)</code> = the dedup key</td><td>A's send log <code>outbound_requests</code> · B's records <code>requests</code></td></tr>
+  </table>
+  <ul style="margin-top: 0.22in">
+    <li><strong>Write it down first:</strong> A logs each request <code>PENDING</code> before sending; every write goes to the SQLite file.</li>
+    <li><strong>Check before acting:</strong> B returns the <em>stored</em> result if <code>(dialog_id, seq)</code> was already processed.</li>
+    <li>Schema: clearly labelled <code>v0.1-experimental</code> (no mentor draft pinned) — <code>docs/EXPERIMENTAL_SCHEMA.md</code>.</li>
+  </ul>
+  <div class="num">3</div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <h2>Architecture</h2>
+  <div class="fill"><img src="../assets/diagrams/architecture.svg" alt="Architecture" /></div>
+  <div class="foot">One Node.js process · one SQLite file · "restart A" = "restart B" = rebuild everything from the file</div>
+  <div class="num">4</div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <h2>Lifecycle — exactly five states</h2>
+  <div class="fill"><img src="../assets/diagrams/lifecycle.svg" alt="Lifecycle" /></div>
+  <div class="foot">Generated from and checked against <code>VALID_TRANSITIONS</code> in backend/src/types/index.ts</div>
+  <div class="num">5</div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <h2>The five disconnect / retry scenarios</h2>
+  <table>
+    <tr><th>#</th><th>Scenario</th><th>What fails</th><th>Outcome</th></tr>
+    <tr><td>1</td><td>Multiple Dialogs + Retry → Correct Correlation</td><td>D2's request lost (D1 also open)</td><td>Retry lands on D2 only; D1 untouched — D2 COMMITTED</td></tr>
+    <tr><td>2</td><td>Request Lost → Retry</td><td>Request never reaches B</td><td>Processed once on the retry — COMMITTED</td></tr>
+    <tr><td>3</td><td>Response Lost → Duplicate Request</td><td>B did the work, reply lost</td><td>Retry = duplicate, stored answer, work not repeated</td></tr>
+    <tr><td>4</td><td>Adapter B Restart → Durable State Recovery</td><td>Reply lost, then restart</td><td>Reloaded (next seq 2, pending [1]); retry = duplicate — RECOVERED</td></tr>
+    <tr><td>5</td><td>Mid-Task Disconnect + Adapter A Restart → Resume</td><td>seq 3 reply lost, then restart</td><td>next seq 4 from the file; same ids; continues — RECOVERED</td></tr>
+  </table>
+  <p style="font-size: 14pt; margin-top: 0.2in">Each runs as an adapter-level test, on the live runtime, as an HTTP call sequence, from the run endpoint, and from a dashboard card.</p>
+  <div class="num">6</div>
+</section>
+
+<!-- 7 -->
+<section class="slide dark">
+  <h2>Live demo</h2>
+  <div class="grid2">
+    <div>
+      <pre style="background: #111827; border-color: #334155; color: #e2e8f0; font-size: 14pt">node scripts/demo.mjs
+node scripts/trace.mjs</pre>
+      <p style="font-size: 14pt; color: #94a3b8">Dashboard on :5173, backend on :3001 with a fresh demo database; the trace prints one line per backend event.</p>
+    </div>
+    <div>
+      <ul style="font-size: 15pt">
+        <li>Start a task → normal request</li>
+        <li>Request lost → retry → processed once</li>
+        <li>Reply lost → retry → <strong>duplicate blocked, work NOT repeated</strong></li>
+        <li>Scenario 1: correlation across two dialogs</li>
+        <li>Restart Adapter A → same ids, next_seq, pending seq → <strong>RECOVERED</strong></li>
+        <li>Optional: kill the real backend process, restart on the same file</li>
+        <li>Run all five → 5 of 5 passed</li>
+      </ul>
+    </div>
+  </div>
+  <div class="num">7</div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <h2>Recovery, as the dashboard shows it</h2>
+  <div class="grid3">
+    <div class="shot"><img src="../assets/screenshots/03-duplicate-blocked.png" alt="Duplicate blocked" /><p>Reply lost → retry: <strong>duplicate blocked · work NOT repeated · stored answer returned</strong></p></div>
+    <div class="shot"><img src="../assets/screenshots/04-recovered-row.png" alt="Recovered row" /><p>After Restart Adapter A: same dialog_id / task_id, <strong>next_seq 5</strong>, seq 4 still unanswered</p></div>
+    <div class="shot"><img src="../assets/screenshots/05-recovered-task.png" alt="Recovered task" /><p>Task ends <strong>RECOVERED</strong> — "5 work items, none repeated"</p></div>
+  </div>
+  <div class="num">8</div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <h2>Test evidence (2026-10-09)</h2>
+  <table>
+    <tr><th>Level</th><th>Count</th><th>Result</th></tr>
+    <tr><td>Backend unit + integration (Vitest)</td><td>265 tests · 14 files</td><td class="ok">all passed</td></tr>
+    <tr><td>— of which HTTP API (supertest)</td><td>62 tests</td><td class="ok">all passed</td></tr>
+    <tr><td>Frontend unit (Node + jsdom)</td><td>65 checks</td><td class="ok">all passed</td></tr>
+    <tr><td>Client smoke vs a real backend</td><td>6 steps</td><td class="ok">all passed</td></tr>
+    <tr><td>Browser E2E (Playwright + Edge, real backend + SQLite)</td><td>16 tests</td><td class="ok">all passed, repeated runs</td></tr>
+  </table>
+  <p style="font-size: 14pt; margin-top: 0.2in">Mutation check — breaking the dedup check in Adapter B fails 10 of 16 browser tests; breaking the duplicate result line fails 3; breaking reconnect fails 1. Details: <code>docs/TEST_RESULTS.md</code>.</p>
+  <div class="num">9</div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <h2>Pseudocode — Adapter B, in this order</h2>
+  <pre>handleRequest(req):                                     # backend/src/adapters/AdapterB.ts
+    dialog = correlate(req.dialog_id, req.task_id)      # DIALOG_NOT_FOUND / TASK_MISMATCH
+    if processed.has(req.dialog_id, req.seq):
+        return duplicate(stored result)                 # work NOT re-run
+    if dialog is terminal: return error(DIALOG_TERMINAL)
+    result = run_side_effect(req.payload)               # ── crash window opens
+    processed.insert(req.dialog_id, req.seq, result)    # persisted ── crash window closes
+    if dialog.state == INITIATED: transition(PROCESSING)
+    return ok(result)
+
+recover():                                              # AdapterA.ts — after every restart
+    for each INITIATED / PROCESSING dialog: restored = true,
+        next_seq = send_log.max_seq + 1, pending_seqs = send_log.pending</pre>
+  <div class="foot">Full page: docs/PSEUDOCODE.md</div>
+  <div class="num">10</div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <h2>Limitations &amp; non-claims</h2>
+  <div class="grid2">
+    <div class="nonclaim">
+      <ul>
+        <li><strong>Not exactly-once</strong> — a recorded request is never re-run; a crash between the work and its record can repeat it.</li>
+        <li><strong>Not an IETF standard</strong> — experimental schema, inspired by agentproto.</li>
+        <li><strong>Not MCP / A2A</strong>; no interoperability with them.</li>
+        <li><strong>No interoperability between independently built adapters</strong> claimed — pending mentor clarification.</li>
+      </ul>
+    </div>
+    <div>
+      <ul style="font-size: 15pt">
+        <li>One process, one shared SQLite file (restart A = restart B).</li>
+        <li>File rewritten in place — a crash during the write could corrupt it.</li>
+        <li>In-process transport: drop request / drop reply only.</li>
+        <li>Side-effect / duplicate counters and the event log are in memory.</li>
+        <li>Local, unauthenticated demo API.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="num">11</div>
+</section>
+
+<!-- 12 -->
+<section class="slide dark">
+  <h2>Team Nighthawks · deliverables</h2>
+  <div class="grid2">
+    <div>
+      <p class="big">Team members: <span class="muted">&lt;to be completed by the team&gt;</span></p>
+      <p style="font-size: 14pt; color: #94a3b8">Repository: github.com/anuragyy403/Nighthawks</p>
+    </div>
+    <div>
+      <ul style="font-size: 15pt">
+        <li>Report — docs/submission/Nighthawks-PS-021-Report.pdf</li>
+        <li>Schema — docs/EXPERIMENTAL_SCHEMA.md</li>
+        <li>Pseudocode — docs/PSEUDOCODE.md</li>
+        <li>Test results — docs/TEST_RESULTS.md</li>
+        <li>Demo script — docs/DEMO_SCRIPT.md</li>
+        <li>Demo video — <code>cd e2e &amp;&amp; npm run demo:record</code></li>
+      </ul>
+    </div>
+  </div>
+  <div class="num">12</div>
+</section>
+
+</body>
+</html>
