@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A3-PS021-TC405 — Experimental Dialog Correlation and Recovery Across Agent Adapters</title>
+<!--
+  Submission PDF in the structure of the organizers' Proposed-structure-hackathon.pdf
+  (title · Problem Description · Background · Literature & RFC Review · Proposed Solution ·
+  Optimization Proposed · Solution Architecture & Design · Data Flow Diagram ·
+  Deployment Timeline · Bibliography · Thank you). Long sections continue on "(n/m)" slides.
+  Build: cd e2e && npm run report:submission  →  docs/submission/A3-PS021-TC405.pdf
+  Every number comes from docs/TEST_RESULTS.md (runs of 2026-10-09) and the git history.
+-->
+<style>
+  @page { size: 160mm 90mm; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "PT Sans", "Segoe UI", "Calibri", Arial, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  :root { --blue: #0000e6; --muted: #333; }
+  .slide { width: 160mm; height: 90mm; position: relative; overflow: hidden; page-break-after: always; break-after: page; padding: 0 6mm; }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .hdr { position: absolute; top: 2.2mm; left: 0; right: 0; text-align: center; font-size: 5.8pt; font-weight: 700; color: var(--blue); }
+  .hdr span + span { margin-left: 5mm; }
+  h1 { color: var(--blue); font-size: 15pt; margin: 8.5mm 0 0 0; line-height: 1.1; }
+  .lead { font-weight: 700; font-size: 8.4pt; margin: 2.2mm 0 1.6mm; line-height: 1.25; }
+  .body { font-size: 7.3pt; line-height: 1.32; }
+  .body p { margin: 0 0 1.4mm; }
+  ul { margin: 0.6mm 0 0 0; padding-left: 4.2mm; }
+  li { margin: 0 0 0.75mm; }
+  li::marker { color: var(--blue); }
+  b, strong { font-weight: 700; }
+  code { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 0.93em; }
+  table { border-collapse: collapse; width: 100%; font-size: 6.2pt; line-height: 1.22; }
+  th { background: #e8e8ff; color: #000; text-align: left; font-weight: 700; }
+  th, td { border: 0.3mm solid #b8b8d8; padding: 0.7mm 1.1mm; vertical-align: top; }
+  .ftr { position: absolute; bottom: 2.4mm; left: 6mm; right: 6mm; font-size: 5.6pt; color: var(--blue); display: flex; justify-content: space-between; }
+  .ftr b { font-weight: 700; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .fig { text-align: center; margin-top: 1mm; }
+  .fig img { max-width: 100%; max-height: 57mm; border: 0.3mm solid #ccc; }
+  .cap { font-size: 6.6pt; margin-top: 1mm; }
+  .cap .f { color: var(--blue); }
+  .note { font-size: 6pt; color: var(--muted); }
+  pre { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; font-size: 5.15pt; line-height: 1.24; margin: 0; padding: 1.4mm 2mm; background: #f5f5ff; border: 0.3mm solid #c8c8e8; white-space: pre; }
+  .ok { color: #047857; font-weight: 700; }
+  /* title slide */
+  .title .logo { position: absolute; top: 6mm; left: 6mm; width: 15mm; }
+  .title .code { position: absolute; top: 34mm; left: 6mm; color: var(--blue); font-size: 22pt; font-weight: 700; }
+  .title .sub { position: absolute; top: 46mm; left: 6mm; right: 6mm; font-size: 10.2pt; }
+  .title .team { position: absolute; top: 56mm; left: 6mm; font-size: 7pt; line-height: 1.45; }
+  .title .team .row b { display: inline-block; min-width: 34mm; }
+  .title .meta { position: absolute; top: 76mm; left: 6mm; font-size: 7pt; line-height: 1.55; }
+  .thanks { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 11pt; padding-bottom: 14mm; }
+  .bib li { margin-bottom: 1.15mm; }
+  .bib { font-size: 6.3pt; line-height: 1.3; list-style: none; padding-left: 0; }
+  .bib .n { color: var(--blue); display: inline-block; width: 6mm; }
+  .tl td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<!-- 1 · Title -->
+<section class="slide title">
+  <img class="logo" src="aiori/logo_0.png" alt="AIORI logo">
+  <div class="code">A3-PS021-TC405</div>
+  <div class="sub">Experimental Dialog Correlation and Recovery Across Agent Adapters</div>
+  <div class="team">
+    <div class="row"><b>Anuragy Singh Yadav</b> anuragysinghyadav@gmail.com</div>
+    <div class="row"><b>Amit Kushwaha</b> amitkushwaha0804@gmail.com</div>
+    <div class="row"><b>Dr Nidhi Srivastava</b> nsrivastava2@lko.amity.edu</div>
+  </div>
+  <div class="meta">AIORI Hackathon 3 · Category: 6G &amp; Future Networks · Team Nighthawks<br>October 9, 2026</div>
+</section>
+
+<!-- 2 · Problem Description (1/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Abstract</span></div>
+  <h1>Problem Description</h1>
+  <div class="lead">Agents built on different frameworks (e.g. Anthropic's MCP, Google's A2A) track conversation context in their own ways. When an agent restarts or the network disconnects mid-task, there is no standard dialog tracking, so context is lost and operations are repeated.</div>
+  <div class="body">
+    <b>Key issues</b>
+    <ul>
+      <li><b>No shared dialog identity:</b> a retried message cannot be matched to the dialog / task it belongs to.</li>
+      <li><b>Context lost on restart:</b> in-memory state disappears; the task is orphaned or restarted from scratch.</li>
+      <li><b>Ambiguous retries:</b> the sender cannot tell "request lost" from "reply lost"; retrying can <b>repeat a side effect</b>.</li>
+      <li><b>Task identity drift:</b> new identifiers after recovery break the link to the original task.</li>
+      <li><b>Implicit lifecycle:</b> without explicit states nobody can tell running / finished / failed, and finished tasks may accept new work.</li>
+      <li><b>No settled standard:</b> IETF agent-protocol work is still emerging, so any schema used today is experimental.</li>
+    </ul>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 3 · Problem Description (2/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Abstract</span></div>
+  <h1>Problem Description (2/2) — failure analysis</h1>
+  <div class="lead">From the sender's side "request lost" and "reply lost" look identical (silence). The only safe move is to retry, so the receiver must recognise a retry of work it already did.</div>
+  <div class="body">
+    <table>
+      <tr><th>Failure point</th><th>What the sender sees</th><th>What actually happened</th><th>Risk without dialog tracking</th></tr>
+      <tr><td>Request lost in transit</td><td>No reply</td><td>Receiver never got it</td><td>Retry is safe, but the sender cannot know that</td></tr>
+      <tr><td>Reply lost in transit</td><td>No reply</td><td>Receiver <b>already did the work</b></td><td>Retry → <b>duplicate side effect</b></td></tr>
+      <tr><td>Receiver restarts</td><td>No reply / errors</td><td>Receiver memory wiped</td><td>Duplicates not recognised; context lost</td></tr>
+      <tr><td>Sender restarts mid-task</td><td>Sender memory wiped</td><td>Task half done</td><td>Task restarted or abandoned; identity lost</td></tr>
+      <tr><td>Several dialogs active</td><td>A retry arrives</td><td>It belongs to one dialog</td><td>Retry applied to the wrong task</td></tr>
+    </table>
+    <p style="margin-top:1.6mm"><b>PS-021 asks for:</b> 2 mock agent adapters · 1 dialog-state schema · task identity across restarts · request deduplication · 5 disconnect/retry scenarios · explicit lifecycle states and transitions · a clearly labelled experimental schema · <b>no claim</b> of a final IETF standard, complete MCP/A2A interoperability or universal exactly-once delivery.</p>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 4 · Background (1/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Background</span></div>
+  <h1>Background</h1>
+  <div class="lead">Two bodies of knowledge meet here: how agent protocols identify tasks and sessions, and the classic distributed-systems rules for retries over unreliable links.</div>
+  <div class="body">
+    <ul>
+      <li><b>Agent protocols identify work locally.</b> MCP encodes messages as JSON-RPC and may assign an <code>Mcp-Session-Id</code> per client–server session [2,3]. A2A identifies a <i>Task</i> by a server-generated id and groups interactions with a <code>contextId</code>, with its own task states [4]. Each defines identity inside its own protocol, not across an adapter boundary.</li>
+      <li><b>The IETF has chartered this gap.</b> The <i>agentproto</i> working group (ART area) plans a baseline <i>agentic dialog management protocol</i> covering dialog identifiers, correlation and lifecycle carried over existing protocols; no drafts are adopted yet (first milestone Dec 2026) [1].</li>
+      <li><b>Unreliable links make retries unavoidable.</b> Two parties cannot be certain of agreement over a channel that can lose messages [7], so senders retry ("at-least-once").</li>
+      <li><b>Retries are safe only if the receiver is idempotent.</b> HTTP defines idempotent methods [5]; for non-idempotent requests an <i>Idempotency-Key</i> header has been proposed [6]. Our receiver uses the key <code>(dialog_id, seq)</code>.</li>
+      <li><b>Deduplication must be durable.</b> A dedup table kept only in memory is lost on restart — exactly when retries arrive.</li>
+    </ul>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 5 · Background (2/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Background</span></div>
+  <h1>Background (2/2) — concepts used in this project</h1>
+  <div class="lead">Terms as they are implemented in the prototype (source of truth: <code>backend/src/types/index.ts</code>, <code>backend/src/db/schema.sql</code>).</div>
+  <div class="body">
+    <table>
+      <tr><th style="width:22%">Concept</th><th>Meaning in the prototype</th></tr>
+      <tr><td><b>Dialog</b> / <code>dialog_id</code></td><td>One bounded exchange between Adapter A and Adapter B about one task; the <b>correlation key</b> (generated by Adapter A).</td></tr>
+      <tr><td><b>Task</b> / <code>task_id</code></td><td>The unit of work the dialog carries; stored once; a request whose <code>task_id</code> differs is rejected (<code>TASK_MISMATCH</code>).</td></tr>
+      <tr><td><b>Logical request</b> / <code>seq</code></td><td>Integer &gt; 0 per dialog. <code>(dialog_id, seq)</code> is the deduplication key; a retry keeps the same ids <b>and</b> payload.</td></tr>
+      <tr><td><b>Lifecycle</b></td><td>Exactly 5 states: INITIATED, PROCESSING, COMMITTED, RECOVERED, FAILED; the last three are terminal.</td></tr>
+      <tr><td><b>Durable state</b></td><td>Three tables in one SQLite file, written to disk after every change: <code>dialogs</code>, <code>outbound_requests</code> (A), <code>requests</code> (B).</td></tr>
+      <tr><td><b>Recovery</b></td><td>After a restart, Adapter A reloads every unfinished dialog, marks it <code>restored</code>, and derives the next <code>seq</code> and the unanswered requests from disk.</td></tr>
+      <tr><td><b>Duplicate-side-effect prevention</b></td><td>A request already recorded as processed is answered from the stored result and not executed again. This is <b>not</b> exactly-once delivery (see limitations).</td></tr>
+    </table>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 6 · Literature & RFC Review -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Literature &amp; RFC Review</span></div>
+  <h1>Literature &amp; RFC Review (1/2) — agent protocols</h1>
+  <div class="lead">Only the most relevant standards and proposals; what each provides and what it leaves open for this problem.</div>
+  <div class="body">
+    <table>
+      <tr><th style="width:21%">Source</th><th style="width:41%">What it provides</th><th>Relevance / gap for PS-021</th></tr>
+      <tr><td>IETF <b>agentproto</b> WG charter [1]</td><td>Active WG (ART). Plans an agentic dialog management protocol: dialog correlation, lifecycle, bindings to HTTP/QUIC/WebTransport; "neither replaces application-layer agent communication protocols nor defines a new transport protocol".</td><td>Defines exactly our topic, but no adopted draft yet → we use an <b>experimental</b> schema "inspired by" it, not an implementation of it.</td></tr>
+      <tr><td><b>MCP</b> specification [2,3]</td><td>JSON-RPC message encoding; optional <code>Mcp-Session-Id</code>; SSE streams resumable with <code>Last-Event-ID</code> per stream.</td><td>Session and stream scoped; no cross-framework dialog/task id or durable request dedup.</td></tr>
+      <tr><td><b>A2A</b> specification [4]</td><td>Task id (server-generated), <code>contextId</code> grouping, task states; terminal states (completed, failed, canceled, rejected) accept no further messages.</td><td>Confirms explicit lifecycle + terminal protection; identity is internal to A2A.</td></tr>
+      <tr><td><b>JSON-RPC 2.0</b> [8]</td><td>The <code>id</code> member correlates a response to its request.</td><td>Per-call correlation only; not a dialog or task identity across restarts.</td></tr>
+    </table>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 6b · Literature & RFC Review (2/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Literature &amp; RFC Review</span></div>
+  <h1>Literature &amp; RFC Review (2/2) — retries and idempotency</h1>
+  <div class="body" style="margin-top:2.5mm">
+    <table>
+      <tr><th style="width:21%">Source</th><th style="width:41%">What it provides</th><th>Relevance / gap for PS-021</th></tr>
+      <tr><td><b>RFC 9110</b> HTTP Semantics [5]</td><td>Defines idempotent methods: repeating them has the same intended effect.</td><td>Basis for safe retries; agent task requests are generally not idempotent.</td></tr>
+      <tr><td><b>Idempotency-Key</b> I-D [6]</td><td>httpapi WG draft (v07, now expired): a client key that makes POST/PATCH retries fault-tolerant.</td><td>Same idea as our <code>(dialog_id, seq)</code> key, applied per dialog.</td></tr>
+      <tr><td>Akkoyunlu et al. 1975 [7]</td><td>Agreement over a lossy channel cannot be guaranteed ("two generals").</td><td>Why we claim duplicate prevention, <b>not</b> exactly-once.</td></tr>
+    </table>
+    <p style="margin-top:2mm"><b>Takeaways applied in our design</b></p>
+    <ul>
+      <li>Carry an explicit dialog identity across the adapter boundary (the agentproto direction): <code>dialog_id</code> + <code>task_id</code>.</li>
+      <li>Give every logical request an idempotency key — <code>(dialog_id, seq)</code> — and store it <b>durably</b>, so it survives restarts.</li>
+      <li>Use explicit lifecycle states where terminal states refuse new work (as A2A does for its tasks).</li>
+      <li>Claim only duplicate-side-effect prevention; exactly-once cannot be guaranteed over lossy links [7].</li>
+    </ul>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 7 · Proposed Solution (1/4) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Proposed Solution</span></div>
+  <h1>Proposed Solution</h1>
+  <div class="lead">A prototype with two mock agent adapters that share one experimental dialog-state schema (v0.1-experimental) and one durable SQLite store.</div>
+  <div class="body cols">
+    <div>
+      <ul>
+        <li><b>Adapter A (initiator):</b> starts dialogs, assigns <code>seq</code>, writes each request to its <b>send log</b> as PENDING <i>before</i> sending, retries with the same ids and payload, completes or aborts the task, and recovers after a restart.</li>
+        <li><b>Transport (in-process):</b> delivers A→B and can drop the request or the reply (fault injection).</li>
+        <li><b>Adapter B (receiver):</b> correlate (<code>dialog_id</code> + <code>task_id</code>) → dedup on <code>(dialog_id, seq)</code> → refuse new work on finished dialogs → run the mock side effect → record result.</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><b>Durable store:</b> <code>dialogs</code>, <code>outbound_requests</code>, <code>requests</code> in one SQLite file (sql.js), saved after every change.</li>
+        <li><b>Recovery:</b> on every start/restart <code>recover()</code> reloads INITIATED/PROCESSING dialogs, sets <code>restored</code>, next <code>seq</code> = max(seq)+1, unanswered seqs listed for retry.</li>
+        <li><b>Control &amp; visibility:</b> Express HTTP API (14 endpoints), React dashboard, live event trace, five scripted scenarios.</li>
+        <li><b>Stack:</b> Node.js + TypeScript, Express, sql.js, zod, React + Vite, Vitest, Playwright.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 8 · Proposed Solution (2/4) lifecycle -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Proposed Solution</span></div>
+  <h1>Proposed Solution (2/4) — explicit lifecycle</h1>
+  <div class="fig">
+    <img src="../assets/diagrams/lifecycle.svg" alt="Lifecycle state machine" style="max-height:52mm">
+    <div class="cap"><span class="f">Figure:</span> Dialog lifecycle — 5 states, valid transitions and their triggers (generated and checked against <code>VALID_TRANSITIONS</code> in the code). COMMITTED, RECOVERED and FAILED are terminal; Adapter B refuses new work for them (<code>DIALOG_TERMINAL</code>) but still replays stored answers.</div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 9 · Proposed Solution (3/4) scenarios -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Proposed Solution</span></div>
+  <h1>Proposed Solution (3/4) — five disconnect / retry scenarios</h1>
+  <div class="lead">Each scenario is a backend script, an HTTP call sequence and a UI demo; all pass at every test level (runs of 9 Oct 2026).</div>
+  <div class="body">
+    <table>
+      <tr><th style="width:24%">Scenario</th><th>What fails</th><th>What the system does</th><th style="width:15%">Final state</th></tr>
+      <tr><td>1 Multiple dialogs + retry</td><td>D2's request lost (D1 also open)</td><td>Retry correlated to D2/T2 and processed once; D1 untouched</td><td>D2 COMMITTED, D1 INITIATED</td></tr>
+      <tr><td>2 Request lost → retry</td><td>Request never reaches B</td><td>Retry is new for B → processed once</td><td>COMMITTED</td></tr>
+      <tr><td>3 Reply lost → duplicate</td><td>B did the work, reply lost</td><td>Retry recognised as duplicate; stored result returned; work not repeated</td><td>COMMITTED</td></tr>
+      <tr><td>4 Adapter B restart</td><td>Reply lost, then process restart</td><td>Same dialog/task reloaded from the file; retry = duplicate</td><td>RECOVERED</td></tr>
+      <tr><td>5 Adapter A restart mid-task</td><td>seq 3 reply lost, then restart</td><td>Recovery reports next seq 4, pending [3]; retry 3 = duplicate; seq 4 processed</td><td>RECOVERED</td></tr>
+    </table>
+    <p class="note" style="margin-top:1.4mm">"Restart A" and "Restart B" both restart the whole backend process: the two adapters share one store, so both are rebuilt from the SQLite file. A real OS-process kill and restart is also tested (E2E test E).</p>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 10 · Proposed Solution (4/4) pseudocode -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Proposed Solution</span></div>
+  <h1>Proposed Solution (4/4) — pseudocode snippet</h1>
+  <div class="body cols" style="margin-top:2mm; grid-template-columns: 1.05fr 1fr; gap: 2.5mm">
+<pre># Adapter A · sendRequest / retryRequest
+sendRequest(dialog_id, payload):
+  if state(dialog_id) is terminal: error DIALOG_TERMINAL
+  seq = send_log.max_seq(dialog_id) + 1   # from disk
+  send_log.insert(dialog_id, seq, payload, PENDING)
+  return deliver(dialog_id, task_id, seq, payload)
+
+retryRequest(dialog_id, seq):
+  row = send_log.get(dialog_id, seq)   # same payload
+  row.attempts += 1
+  return deliver(dialog_id, task_id, seq, row.payload)
+
+deliver(req):
+  response = transport.send(req)       # may be lost
+  if response in (ok, duplicate):
+      send_log.mark(req.seq, ACKED)
+
+# Adapter A · recover  (every start / restart)
+for d in dialogs where state in (INITIATED, PROCESSING):
+  d.restored = true
+  next_seq = send_log.max_seq(d) + 1
+  pending  = send_log.pending(d)       # retry these</pre>
+<pre># Adapter B · handleRequest  (order matters)
+handleRequest(req):
+  dialog = correlate(req.dialog_id, req.task_id)
+  rec = processed.get(req.dialog_id, req.seq)
+  if rec: return duplicate(rec.result)  # not re-run
+  if dialog is terminal: return error(DIALOG_TERMINAL)
+  result = run_side_effect(req.payload)
+      # ── crash window: done, not yet recorded
+  processed.insert(req.dialog_id, req.seq, result)
+  if dialog.state == INITIATED:
+      transition(dialog, PROCESSING)
+  return ok(result)
+
+# Adapter A · completeDialog
+if send_log.pending(dialog): error PENDING_REQUESTS
+transition(dialog,
+  RECOVERED if dialog.restored else COMMITTED)
+
+# Sources: backend/src/adapters/AdapterA.ts,
+#          backend/src/adapters/AdapterB.ts
+# Full version: docs/PSEUDOCODE.md</pre>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 11 · Optimization Proposed (1/2) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Solution Optimization</span></div>
+  <h1>Optimization Proposed</h1>
+  <div class="lead">Enhancements made during development; "before" is the earlier baseline in our own repository (commit d7b6d65, 8 Oct 2026), "after" is the final code.</div>
+  <div class="body">
+    <table>
+      <tr><th style="width:19%">Aspect</th><th>Before (baseline)</th><th>After (final prototype)</th></tr>
+      <tr><td>Next <code>seq</code> after Adapter A restart</td><td>Held only in memory; tests had to pass the next seq by hand</td><td>Derived from the durable send log: max(seq) + 1</td></tr>
+      <tr><td>In-flight request after restart</td><td>Unknown — nothing recorded which request was unanswered</td><td>Written as PENDING before sending; <code>recover()</code> lists pending seqs</td></tr>
+      <tr><td>Retry payload</td><td>Caller could send a different payload under the same <code>seq</code></td><td>Replayed from the send log — a retry is always the same logical request</td></tr>
+      <tr><td>Finished dialogs</td><td>Still accepted new work and ran side effects</td><td>New work refused (<code>DIALOG_TERMINAL</code>); stored answers still replayed</td></tr>
+      <tr><td>Lifecycle use</td><td>COMMITTED only via a test helper; RECOVERED and FAILED never reached</td><td>All 5 states reached by normal flows (complete, restart + complete, retry budget, abort)</td></tr>
+      <tr><td>Retry limit</td><td>None</td><td>After 5 unanswered attempts the dialog moves to FAILED</td></tr>
+      <tr><td>Control / evidence</td><td>Unit tests only; dashboard was a separate browser simulation</td><td>HTTP API + dashboard driven by the real backend; 16 browser E2E tests</td></tr>
+    </table>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 12 · Optimization Proposed (2/2) measured -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Solution Optimization</span></div>
+  <h1>Optimization Proposed (2/2) — measured effect</h1>
+  <div class="lead">Recorded results (docs/TEST_RESULTS.md, runs of 9 Oct 2026, Windows 11, Node.js 24.14.1, Edge 154).</div>
+  <div class="body cols" style="grid-template-columns: 1.1fr 1fr">
+    <div>
+      <table>
+        <tr><th>Test level</th><th>Count</th><th>Result</th></tr>
+        <tr><td>Backend unit + integration (Vitest)</td><td>265</td><td class="ok">265 passed</td></tr>
+        <tr><td>— of which HTTP API (supertest)</td><td>62</td><td class="ok">62 passed</td></tr>
+        <tr><td>Frontend unit checks</td><td>65</td><td class="ok">65 passed</td></tr>
+        <tr><td>Client smoke vs real backend</td><td>6 steps</td><td class="ok">6 passed</td></tr>
+        <tr><td>Browser E2E (Playwright, Edge)</td><td>16</td><td class="ok">16/16 in 3 consecutive runs</td></tr>
+      </table>
+    </div>
+    <div>
+      <table>
+        <tr><th>Fault injected on purpose (then reverted)</th><th>E2E result</th></tr>
+        <tr><td>Backend duplicate check disabled</td><td>10 tests failed — the work ran twice</td></tr>
+        <tr><td>Dashboard duplicate message changed</td><td>3 tests failed</td></tr>
+        <tr><td>Dashboard reconnect removed</td><td>1 test failed</td></tr>
+      </table>
+      <p class="note" style="margin-top:1.4mm">With the duplicate check in place, every scenario keeps the side-effect count at one per logical request; without it, retries after a lost reply repeat the work. This is the "before vs after" of request deduplication, measured.</p>
+    </div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 13 · Architecture -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Architecture Design (UML Diagram)</span></div>
+  <h1>Solution Architecture &amp; Design</h1>
+  <div class="fig">
+    <img src="../assets/diagrams/architecture.svg" alt="System architecture" style="max-height:58mm">
+    <div class="cap"><span class="f">Figure:</span> System architecture (component view) — one Node.js process, one SQLite file; component names match the source code.</div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 14 · Data Flow Diagram -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Data Flow Diagram</span></div>
+  <h1>Data Flow Diagram</h1>
+  <div class="fig">
+    <img src="../assets/diagrams/dataflow.svg" alt="Data flow diagram" style="max-height:58mm">
+    <div class="cap"><span class="f">Figure:</span> Data Flow Diagram (DFD, level 1) — which process reads and writes which store.</div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 15 · Data Flow (sequence) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Data Flow Diagram</span></div>
+  <h1>Data Flow Diagram (2/2) — reply lost, restart, resume</h1>
+  <div class="fig">
+    <img src="../assets/diagrams/sequence.svg" alt="Sequence diagram" style="max-height:58mm">
+    <div class="cap"><span class="f">Figure:</span> Message flow for Scenario 5: reply lost → retry = duplicate → restart → recover → resume → RECOVERED.</div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 16 · Deployment Timeline -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Deployment Timeline</span></div>
+  <h1>Deployment Timeline</h1>
+  <div class="lead">Methodology: phase by phase; each phase was validated (type check, full test suites) and committed before the next started. Dates are from the git history.</div>
+  <div class="body">
+    <table class="tl">
+      <tr><th>Date (2026)</th><th>Milestone</th><th>Evidence</th></tr>
+      <tr><td>1–3 Oct</td><td>Repository created; problem analysis and design README</td><td>commits 9258496, 2ddbb52</td></tr>
+      <tr><td>5–6 Oct</td><td>Interactive dashboard prototype; backend foundation</td><td>531020d, d337865, d24392a</td></tr>
+      <tr><td>8 Oct</td><td>Adapters, transport, dialog manager, five scenario tests; durable send log + recovery; lifecycle completion and terminal protection</td><td>d7b6d65, fc67906, 0a8b295</td></tr>
+      <tr><td>8 Oct</td><td>Documentation and experimental schema; HTTP API design and implementation; scenario runner</td><td>975b2ff → 29e1197</td></tr>
+      <tr><td>8–9 Oct</td><td>Dashboard driven by the real backend; browser simulation removed</td><td>2e84bfe, 918957d, 8b4b1f7</td></tr>
+      <tr><td>9 Oct</td><td>Browser end-to-end suite; demo launcher, trace and script; submission documents</td><td>e6a35bd, 0c0b5d9, 0b5c4ac</td></tr>
+    </table>
+    <p style="margin-top:1.4mm"><b>Deployment model:</b> runs locally — <code>node scripts/demo.mjs</code> starts the backend (port 3001, fresh SQLite file) and the dashboard (port 5173). <b>Next:</b> mentor review and demonstration; repository hand-over to the aiori-hackathon organisation.</p>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 17 · Limitations & non-claims (part of the solution scope) -->
+<section class="slide">
+  <div class="hdr"><span>AIORI 3</span><span>Scope &amp; Limitations</span></div>
+  <h1>Scope, limitations and non-claims</h1>
+  <div class="body cols" style="margin-top:3mm">
+    <div>
+      <b>Known limitations (documented, not hidden)</b>
+      <ul>
+        <li><b>Crash window:</b> Adapter B runs the side effect, then records it. A crash in between means a retry repeats the work.</li>
+        <li><b>Shared store, one process:</b> both adapters use one SQLite file, so restarting either adapter restarts both.</li>
+        <li><b>In-process transport:</b> message loss is simulated, not a real network.</li>
+        <li><b>Counters:</b> duplicate counts and the event log are in memory and reset when the server process exits.</li>
+        <li><b>Mock adapters:</b> the side effect is a mock operation, not a real agent action.</li>
+      </ul>
+    </div>
+    <div>
+      <b>Not claimed</b>
+      <ul>
+        <li>Not a final IETF standard or an implementation of an IETF draft; the schema is labelled <b>v0.1-experimental</b>, inspired by agentproto discussions.</li>
+        <li>No MCP or A2A implementation and no claim of complete MCP/A2A interoperability.</li>
+        <li>No universal exactly-once delivery; the guarantee is <b>duplicate-side-effect prevention once a request is durably recorded as processed</b>.</li>
+        <li>Interoperability between independently implemented adapters was not tested.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 18 · Bibliography -->
+<section class="slide">
+  <div class="hdr"><span>Bibliography</span></div>
+  <h1>Bibliography I</h1>
+  <ul class="bib" style="margin-top:3mm">
+    <li><span class="n">[1]</span>IETF. "Agent Communication Protocols (agentproto)" working group, charter-ietf-agentproto-01. https://datatracker.ietf.org/group/agentproto/about/</li>
+    <li><span class="n">[2]</span>Model Context Protocol. "Specification 2025-06-18: Transports" (JSON-RPC encoding, Streamable HTTP, session management, resumability). https://modelcontextprotocol.io/specification/2025-06-18/basic/transports</li>
+    <li><span class="n">[3]</span>Anthropic. "Introducing the Model Context Protocol", November 2024. https://www.anthropic.com/news/model-context-protocol</li>
+    <li><span class="n">[4]</span>A2A Protocol. "Agent2Agent (A2A) Protocol Specification" (Task, contextId, TaskState). https://a2a-protocol.org/latest/specification/</li>
+    <li><span class="n">[5]</span>R. Fielding, M. Nottingham, J. Reschke (Eds.). "HTTP Semantics", RFC 9110, June 2022, §9.2.2 Idempotent Methods. https://www.rfc-editor.org/rfc/rfc9110</li>
+    <li><span class="n">[6]</span>J. Jena, S. Dalal. "The Idempotency-Key HTTP Header Field", draft-ietf-httpapi-idempotency-key-header-07, Internet-Draft (expired), IETF httpapi WG. https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/</li>
+    <li><span class="n">[7]</span>E. A. Akkoyunlu, K. Ekanadham, R. V. Huber. "Some Constraints and Tradeoffs in the Design of Network Communications", Proc. 5th ACM Symposium on Operating Systems Principles (SOSP '75), 1975, pp. 67–74. doi:10.1145/800213.806523</li>
+    <li><span class="n">[8]</span>JSON-RPC Working Group. "JSON-RPC 2.0 Specification". https://www.jsonrpc.org/specification</li>
+    <li><span class="n">[9]</span>AIORI-3 Hackathon. "PS-021: Experimental Dialog Correlation and Recovery Across Agent Adapters" (problem statement), and Proposed-structure-hackathon.pdf.</li>
+  </ul>
+  <div class="ftr"><span>A. S. Yadav, A. Kushwaha, N. Srivastava • <b>A3-PS021-TC405</b> • October 9, 2026</span><span class="pg"></span></div>
+</section>
+
+<!-- 19 · Thank you -->
+<section class="slide">
+  <div class="thanks">Thank You for Your Attention!</div>
+</section>
+
+<script>
+  // Page numbers "n / N" in the footer, as in the template.
+  const slides = document.querySelectorAll('.slide');
+  slides.forEach((s, i) => { const p = s.querySelector('.pg'); if (p) p.textContent = `${i + 1} / ${slides.length}`; });
+</script>
+</body>
+</html>

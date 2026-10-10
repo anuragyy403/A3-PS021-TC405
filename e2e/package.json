@@ -10,7 +10,8 @@
     "demo:record": "node demo/record.mjs",
     "demo:screenshots": "node demo/screenshots.mjs",
     "report:diagrams": "node report/diagrams.mjs",
-    "report:pdf": "node report/diagrams.mjs && node report/build-pdf.mjs"
+    "report:pdf": "node report/diagrams.mjs && node report/build-pdf.mjs",
+    "report:submission": "node report/build-submission.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"
