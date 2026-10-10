@@ -2,7 +2,8 @@
  * npm run report:submission — builds the organizer-format submission PDF with
  * Playwright + the installed Microsoft Edge (no browser download):
  *
- *   docs/submission/A3-PS021-TC405.html → docs/submission/A3-PS021-TC405.pdf
+ *   docs/submission/A3-PS021-TC405.html → ../A3-PS021-TC405.pdf (repository root,
+ *   one level above src/, where the organizers expect the presentation)
  *
  * Slide size comes from the page's @page rule (160 mm × 90 mm, the template's size).
  * Offline: any request that is not file:/data: fails the build; every <img> must load.
@@ -34,7 +35,7 @@ try {
     const over = els.some((e) => { const r = e.getBoundingClientRect(); return r.bottom > limit || r.right > box.right + 1; });
     return over ? i + 1 : null;
   }).filter(Boolean));
-  const out = path.join(DIR, 'A3-PS021-TC405.pdf');
+  const out = path.join(REPO_ROOT, '..', 'A3-PS021-TC405.pdf');
   await page.pdf({ path: out, printBackground: true, preferCSSPageSize: true });
   const external = requests.filter((u) => !u.startsWith('file:') && !u.startsWith('data:'));
   const broken = images.filter((i) => !i.ok);
