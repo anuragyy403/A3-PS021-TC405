@@ -21,7 +21,7 @@
 | Demo script, Q&A, fallback plan | [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) |
 | Diagrams (architecture, lifecycle, sequence — generated and verified against the code) | [`docs/assets/diagrams/`](docs/assets/diagrams/) |
 | Screenshots | [`docs/assets/screenshots/`](docs/assets/screenshots/) |
-| Demo video (not committed) | `cd e2e && npm run demo:record` → `e2e/demo-output/*.webm` |
+| **Demo video (YouTube)** | **<https://youtu.be/xTo4qjJWk98>** · re-record locally: `cd e2e && npm run demo:record` → `e2e/demo-output/*.webm` |
 | API design | [`docs/API_DESIGN.md`](docs/API_DESIGN.md) |
 | Hand-over steps and submission checklist | [`docs/submission/HANDOVER.md`](docs/submission/HANDOVER.md) |
 
